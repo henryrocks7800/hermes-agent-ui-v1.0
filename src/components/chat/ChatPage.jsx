@@ -13,6 +13,7 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
   const [isStreaming, setIsStreaming] = useState(false)
   const [currentResponse, setCurrentResponse] = useState('')
   const [toolCalls, setToolCalls] = useState([])
+  const [isThinking, setIsThinking] = useState(false)
   const scrollAreaRef = useRef(null)
   const currentResponseRef = useRef('')
 
@@ -40,6 +41,7 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
     currentResponseRef.current = ''
     setCurrentResponse('')
     setToolCalls([])
+    setIsThinking(false)
     setIsStreaming(true)
 
     let currentThread = thread
@@ -68,8 +70,12 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
         messages: apiMessages,
         apiKey,
         onToken: (token) => {
+          setIsThinking(false)
           currentResponseRef.current += token
           setCurrentResponse(currentResponseRef.current)
+        },
+        onThinking: () => {
+          setIsThinking(true)
         },
         onToolCall: (tools) => {
           setToolCalls(prev => [...prev, ...tools])
@@ -152,7 +158,7 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
                   <span className="text-muted-foreground">Provider:</span> <span>{msg.debug.provider}</span>
                   <span className="text-muted-foreground">Mode:</span> <span>{msg.debug.mode}</span>
                   <span className="text-muted-foreground">Target URL:</span> <span className="truncate">{msg.debug.baseUrl}</span>
-                  <span className="text-muted-foreground">API Key:</span> <span>{msg.debug.hasKey ? 'Configured ✅' : 'Missing ❌'}</span>
+                  <span className="text-muted-foreground">API Key:</span> <span>{msg.debug.hasKey ? 'Configured ✅' : (msg.debug.provider === 'ollama' || msg.debug.provider === 'lmstudio' || msg.debug.provider === 'custom' ? 'Not required ✅' : 'Missing ❌')}</span>
                </div>
             </div>
           )}
@@ -226,7 +232,7 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
                    <button 
                     key={cmd} 
                     className="group flex items-center gap-2 px-5 py-2.5 rounded-xl border border-border bg-card hover:border-primary/40 hover:bg-accent transition-all shadow-sm hover:shadow-md active:scale-95"
-                    onClick={() => {}}
+                    onClick={() => handleSendMessage(cmd)}
                   >
                     <span className="text-[10px] font-black text-primary/60 group-hover:text-primary transition-colors tracking-tighter">{cmd}</span>
                    </button>
@@ -235,6 +241,17 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
             </div>
           ) : (
             messages.map((msg, i) => renderMessage(msg, i))
+          )}
+          {isThinking && !currentResponse && (
+            <div className="flex gap-3 p-4 justify-start animate-in fade-in">
+              <div className="w-8 h-8 rounded-full bg-muted border border-border text-foreground flex items-center justify-center flex-shrink-0">
+                <Bot className="h-4 w-4" />
+              </div>
+              <div className="max-w-[80%] rounded-xl px-4 py-3 text-sm bg-card border border-border shadow-sm flex items-center gap-3">
+                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                <span className="text-muted-foreground text-xs font-medium italic">Thinking...</span>
+              </div>
+            </div>
           )}
           {currentResponse && (
             <div className="flex gap-3 p-4 justify-start">

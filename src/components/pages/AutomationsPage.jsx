@@ -9,14 +9,8 @@ import { storage } from '@/lib/storage'
 import { Clock, Calendar, Play, Pause, Trash2, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-const initialJobs = [
-  { id: '1', name: 'Daily Code Review', prompt: 'Review recent commits', schedule: '0 9 * * *', status: 'active', lastRun: '2 hours ago' },
-  { id: '2', name: 'Weekly Dependencies Check', prompt: 'Check npm outdated', schedule: '0 10 * * 1', status: 'paused', lastRun: '5 days ago' },
-  { id: '3', name: 'Hourly Health Check', prompt: 'Run health script', schedule: '0 * * * *', status: 'active', lastRun: '15 minutes ago' },
-]
-
 export default function AutomationsPage() {
-  const [jobs, setJobs] = useState(() => storage.get('hermes.automations', initialJobs))
+  const [jobs, setJobs] = useState(() => storage.get('hermes.automations', []))
   
   const [newDialog, setNewDialog] = useState(false)
   const [newName, setNewName] = useState('')

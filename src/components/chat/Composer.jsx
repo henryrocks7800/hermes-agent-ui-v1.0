@@ -24,7 +24,9 @@ export default function Composer({ onSendMessage, disabled, model, onModelChange
   const commandSuggestions = showCommandMenu ? getCommandCompletions('/' + commandFilter) : []
   const contextSuggestions = showContextMenu ? getContextCompletions(contextFilter) : []
   
-  const providerModels = PROVIDER_MODELS[provider] || PROVIDER_MODELS['openai']
+  // DEF-011 fix: Include the current model in the dropdown even if it's not in the provider list
+  const baseModels = PROVIDER_MODELS[provider] || PROVIDER_MODELS['openai'] || []
+  const providerModels = model && !baseModels.includes(model) ? [model, ...baseModels] : baseModels
 
   useEffect(() => {
     const handleClickOutside = (e) => {

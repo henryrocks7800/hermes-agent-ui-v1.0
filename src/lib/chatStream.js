@@ -13,7 +13,7 @@
  * @param {function} opts.onDone - called when stream ends
  * @param {function} opts.onError - called on error
  */
-export async function streamChat({ baseUrl, model, messages, apiKey, signal, onToken, onToolCall, onDone, onError }) {
+export async function streamChat({ baseUrl, model, messages, apiKey, signal, onToken, onToolCall, onThinking, onDone, onError }) {
   const url = `${baseUrl.replace(/\/$/, '')}/chat/completions`
   const headers = {
     'Content-Type': 'application/json',
@@ -50,6 +50,7 @@ export async function streamChat({ baseUrl, model, messages, apiKey, signal, onT
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
+  let doneHandled = false
 
   try {
     while (true) {
@@ -64,11 +65,17 @@ export async function streamChat({ baseUrl, model, messages, apiKey, signal, onT
         const trimmed = line.trim()
         if (!trimmed || !trimmed.startsWith('data:')) continue
         const data = trimmed.slice(5).trim()
-        if (data === '[DONE]') { onDone?.(); return }
+        if (data === '[DONE]') {
+          doneHandled = true
+          onDone?.()
+          return
+        }
         try {
           const json = JSON.parse(data)
           const delta = json.choices?.[0]?.delta
           if (delta?.content) onToken?.(delta.content)
+          // Support reasoning models (qwen3-coder, etc.) — surface thinking indicator
+          if (delta?.reasoning_content && !delta?.content) onThinking?.()
           if (delta?.tool_calls) onToolCall?.(delta.tool_calls)
         } catch { /* malformed chunk — skip */ }
       }
@@ -76,7 +83,7 @@ export async function streamChat({ baseUrl, model, messages, apiKey, signal, onT
   } catch (err) {
     if (err.name !== 'AbortError') onError?.(err)
   } finally {
-    onDone?.()
+    if (!doneHandled) onDone?.()
   }
 }
 

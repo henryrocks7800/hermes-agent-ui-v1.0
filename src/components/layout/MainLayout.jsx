@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { storage, KEYS } from '@/lib/storage'
 import Sidebar from './Sidebar.jsx'
 import ChatPage from '../chat/ChatPage.jsx'
@@ -25,33 +25,37 @@ export default function MainLayout() {
   const [activeThreadId, setActiveThreadId] = useState(() => storage.get(KEYS.ACTIVE_THREAD, null))
   const [connectionStatus, setConnectionStatus] = useState('connecting')
   
-  const resolveEffectiveUrl = useCallback((mode, provider, customBaseUrl, externalUrl) => {
-    if (mode === 'embedded') {
-      return PROVIDER_URLS[provider] || customBaseUrl || 'http://localhost:42424/v1'
-    }
-    if (mode === 'external') {
-      return externalUrl || 'http://localhost:42424/v1'
-    }
-    // 'auto' mode
-    return 'http://localhost:42424/v1'
-  }, [])
+  // Refined config state — use || to treat empty string as falsy (DEF-003)
+  const [sessionParams, setSessionParams] = useState(() => ({
+    mode: storage.get(KEYS.BACKEND_MODE, 'auto') || 'auto',
+    provider: storage.get(KEYS.PROVIDER, 'openai') || 'openai',
+    customBase: storage.get(KEYS.BASE_URL, ''),
+    extUrl: storage.get(KEYS.EXTERNAL_URL, ''),
+    model: storage.get(KEYS.MODEL, '') || '',
+    apiKey: storage.get(KEYS.API_KEY, ''),
+  }))
 
-  const [settings, setSettings] = useState(() => {
-    const mode = storage.get(KEYS.BACKEND_MODE, 'auto')
-    const provider = storage.get(KEYS.PROVIDER, 'openai')
-    const baseUrl = storage.get(KEYS.BASE_URL, '')
-    const extUrl = storage.get(KEYS.EXTERNAL_URL, 'http://localhost:42424/v1')
+  const effectiveSettings = useMemo(() => {
+    const { mode, provider, customBase, extUrl, model, apiKey } = sessionParams
     
-    return {
-      mode,
-      provider,
-      baseUrl: resolveEffectiveUrl(mode, provider, baseUrl, extUrl),
-      model: storage.get(KEYS.MODEL, 'gpt-4o'),
-      apiKey: storage.get(KEYS.API_KEY, ''),
+    let url = 'http://localhost:42424/v1' // Default local Hermes
+    
+    // Logic: If user specifically wants Direct Provider, we MUST use the SaaS URL
+    if (mode === 'embedded') {
+      url = PROVIDER_URLS[provider] || customBase || url
+    } 
+    // Logic: If user wants External Hermes, use the specific IP they provided
+    else if (mode === 'external') {
+      url = extUrl || url
     }
-  })
+    // Logic: Auto mode - tries local first
+    else {
+      url = 'http://localhost:42424/v1'
+    }
 
-  // Synchronization with LocalStorage
+    return { baseUrl: url, model, apiKey, provider, mode }
+  }, [sessionParams])
+
   useEffect(() => {
     const metadata = threads.map(t => ({ id: t.id, title: t.title, createdAt: t.createdAt }))
     storage.set(KEYS.THREADS, metadata)
@@ -64,25 +68,25 @@ export default function MainLayout() {
     storage.set(KEYS.ACTIVE_THREAD, activeThreadId)
   }, [activeThreadId])
 
-  // Periodic Connection Check
   useEffect(() => {
     let mounted = true
     const checkHealth = async () => {
-      const url = settings.baseUrl
+      const url = effectiveSettings.baseUrl
       try {
         let ok = false
         if (window.hermesDesktop && window.hermesDesktop.checkBackendHealth) {
           ok = await window.hermesDesktop.checkBackendHealth(url)
         } else {
-          try {
-            // Bypass health check for safe SaaS endpoints to avoid CORS noise
-            if (url.includes('api.openai.com') || url.includes('openrouter.ai') || url.includes('anthropic.com')) {
-               ok = true 
-            } else {
-               const res = await fetch(`${url.replace(/\/$/, '')}/models`, { method: 'GET', signal: AbortSignal.timeout(3000) })
-               ok = res.ok
-            }
-          } catch { ok = false }
+          // If it is a SaaS provider, we usually don't have a /models endpoint we can reach without a key or CORS
+          // So we assume 'connected' if the URL is an official SaaS one
+          if (url.includes('openai.com') || url.includes('openrouter.ai') || url.includes('anthropic.com')) {
+            ok = true
+          } else {
+            try {
+              const res = await fetch(`${url.replace(/\/$/, '')}/models`, { method: 'GET', signal: AbortSignal.timeout(2000) })
+              ok = res.ok
+            } catch { ok = false }
+          }
         }
         if (mounted) setConnectionStatus(ok ? 'connected' : 'disconnected')
       } catch (e) {
@@ -91,38 +95,28 @@ export default function MainLayout() {
     }
     
     checkHealth()
-    const interval = setInterval(checkHealth, 20000)
+    const interval = setInterval(checkHealth, 30000)
     return () => { mounted = false; clearInterval(interval) }
-  }, [settings.baseUrl])
+  }, [effectiveSettings.baseUrl])
 
   const handleNewThread = () => {
     setActiveThreadId(null)
     setActivePage('chat')
   }
 
-  const handleSelectThread = (id) => {
-    setActiveThreadId(id)
-    setActivePage('chat')
-  }
-
   const handleSaveSettings = (newSet) => {
-    // 1. Commit all to localStorage first
     Object.entries(newSet).forEach(([key, value]) => {
       storage.set(key, value)
     })
     
-    // 2. Refresh local state
-    const mode = storage.get(KEYS.BACKEND_MODE)
-    const provider = storage.get(KEYS.PROVIDER)
-    const customBase = storage.get(KEYS.BASE_URL)
-    const extUrl = storage.get(KEYS.EXTERNAL_URL)
-
-    setSettings({
-      mode,
-      provider,
-      baseUrl: resolveEffectiveUrl(mode, provider, customBase, extUrl),
-      model: storage.get(KEYS.MODEL),
-      apiKey: storage.get(KEYS.API_KEY),
+    // Use nullish coalescing to allow empty strings (e.g., blank apiKey is valid for local providers)
+    setSessionParams({
+      mode: newSet[KEYS.BACKEND_MODE] ?? storage.get(KEYS.BACKEND_MODE) ?? 'auto',
+      provider: newSet[KEYS.PROVIDER] ?? storage.get(KEYS.PROVIDER) ?? 'openai',
+      customBase: newSet[KEYS.BASE_URL] ?? storage.get(KEYS.BASE_URL) ?? '',
+      extUrl: newSet[KEYS.EXTERNAL_URL] ?? storage.get(KEYS.EXTERNAL_URL) ?? '',
+      model: newSet[KEYS.MODEL] ?? storage.get(KEYS.MODEL) ?? '',
+      apiKey: newSet[KEYS.API_KEY] ?? storage.get(KEYS.API_KEY) ?? '',
     })
   }
 
@@ -133,7 +127,7 @@ export default function MainLayout() {
         onNavigate={setActivePage}
         threads={threads}
         activeThreadId={activeThreadId}
-        onSelectThread={handleSelectThread}
+        onSelectThread={(id) => { setActiveThreadId(id); setActivePage('chat') }}
         onNewThread={handleNewThread}
         connectionStatus={connectionStatus}
       />
@@ -150,13 +144,13 @@ export default function MainLayout() {
             }}
             connectionStatus={connectionStatus}
             setConnectionStatus={setConnectionStatus}
-            settings={{ ...settings, onSettingsChange: handleSaveSettings }}
+            settings={{ ...effectiveSettings, onSettingsChange: handleSaveSettings }}
           />
         )}
         {activePage === 'threads' && (
           <ThreadsPage
             threads={threads}
-            onSelectThread={handleSelectThread}
+            onSelectThread={(id) => { setActiveThreadId(id); setActivePage('chat') }}
             onDeleteThread={(id) => {
               setThreads(threads.filter(t => t.id !== id))
               if (activeThreadId === id) setActiveThreadId(null)

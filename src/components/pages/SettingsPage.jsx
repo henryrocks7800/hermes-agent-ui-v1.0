@@ -12,9 +12,16 @@ import { PROVIDER_MODELS } from '@/lib/commands'
 import { ArrowLeft, ArrowRight, Check, X, Loader2, ExternalLink, Github, RotateCcw, Download } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
+// Providers that use OAuth — no API key field, show OAuth placeholder
+const OAUTH_PROVIDERS = ['openai-codex', 'copilot']
+// Providers that don't need an API key (local runners)
+const NO_KEY_PROVIDERS = ['ollama', 'lmstudio']
+// Providers that need a base URL input on Model tab
+const BASE_URL_PROVIDERS = ['ollama', 'lmstudio', 'custom']
+
 export default function SettingsPage({ onSave }) {
-  const [provider, setProvider] = useState(() => storage.get(KEYS.PROVIDER, 'openai'))
-  const [model, setModel] = useState(() => storage.get(KEYS.MODEL, 'gpt-4o'))
+  const [provider, setProvider] = useState(() => storage.get(KEYS.PROVIDER, '') || 'openai')
+  const [model, setModel] = useState(() => storage.get(KEYS.MODEL, ''))
   const [apiKey, setApiKey] = useState(() => storage.get(KEYS.API_KEY, ''))
   const [baseUrl, setBaseUrl] = useState(() => storage.get(KEYS.BASE_URL, 'http://localhost:42424/v1'))
   const [backendMode, setBackendMode] = useState(() => storage.get(KEYS.BACKEND_MODE, 'auto'))
@@ -45,10 +52,32 @@ export default function SettingsPage({ onSave }) {
     }
   }, [updateLog])
 
+  // DEF-005 fix: clamp max iterations to 1-500
+  const handleMaxTurnsChange = (e) => {
+    const raw = parseInt(e.target.value)
+    if (isNaN(raw)) { setMaxTurns(90); return }
+    setMaxTurns(Math.max(1, Math.min(500, raw)))
+  }
+
   const handleSave = () => {
+    // DEF-004 fix: require a model to be set
+    if (!model.trim()) {
+      // Auto-select first model for provider if user forgot
+      const models = PROVIDER_MODELS[provider]
+      if (models && models.length > 0) {
+        setModel(models[0])
+        // Continue save with auto-selected model
+        doSave(models[0])
+        return
+      }
+    }
+    doSave(model)
+  }
+
+  const doSave = (modelToSave) => {
     onSave({
       [KEYS.PROVIDER]: provider,
-      [KEYS.MODEL]: model,
+      [KEYS.MODEL]: modelToSave,
       [KEYS.API_KEY]: apiKey,
       [KEYS.BASE_URL]: baseUrl,
       [KEYS.BACKEND_MODE]: backendMode,
@@ -128,6 +157,9 @@ export default function SettingsPage({ onSave }) {
   }
 
   const isDesktop = !!window.hermesDesktop?.isDesktop
+  const isOAuth = OAUTH_PROVIDERS.includes(provider)
+  const needsKey = !NO_KEY_PROVIDERS.includes(provider) && !isOAuth
+  const needsBaseUrl = BASE_URL_PROVIDERS.includes(provider)
 
   return (
     <div className="h-full flex flex-col relative bg-background animate-in fade-in duration-300">
@@ -183,8 +215,11 @@ export default function SettingsPage({ onSave }) {
                     value={model}
                     onChange={(e) => setModel(e.target.value)}
                     placeholder="Enter model identifier"
-                    className="mb-4 h-11 bg-background"
+                    className={cn("mb-4 h-11 bg-background", !model.trim() && "border-amber-500/50")}
                   />
+                  {!model.trim() && (
+                    <p className="text-[11px] text-amber-500 mb-3">⚠ Select or type a model name before saving.</p>
+                  )}
                   {PROVIDER_MODELS[provider] && (
                     <div className="flex flex-wrap gap-2">
                       {PROVIDER_MODELS[provider].map((m) => (
@@ -205,59 +240,106 @@ export default function SettingsPage({ onSave }) {
                   )}
                 </div>
 
-                <div className="p-6 rounded-xl border border-border bg-card shadow-sm">
-                  <h3 className="font-semibold mb-4 text-base">API Credentials</h3>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Secret Key</label>
-                    <Input
-                      type="password"
-                      value={apiKey}
-                      onChange={(e) => setApiKey(e.target.value)}
-                      placeholder="sk-..."
-                      className="h-11 bg-background"
-                    />
-                    <p className="text-[11px] text-muted-foreground">Keys are stored locally in your browser/app cache.</p>
+                {/* DEF-002 fix: Base URL input for custom/ollama/lmstudio */}
+                {needsBaseUrl && (
+                  <div className="p-6 rounded-xl border border-border bg-card shadow-sm animate-in zoom-in-95">
+                    <h3 className="font-semibold mb-4 text-base">API Base URL</h3>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Endpoint</label>
+                      <Input
+                        value={baseUrl}
+                        onChange={(e) => setBaseUrl(e.target.value)}
+                        placeholder={provider === 'ollama' ? 'http://localhost:11434/v1' : provider === 'lmstudio' ? 'http://localhost:1234/v1' : 'https://your-api.example.com/v1'}
+                        className="h-11 bg-background font-mono text-sm"
+                      />
+                      <p className="text-[11px] text-muted-foreground">The OpenAI-compatible API endpoint for this provider.</p>
+                    </div>
                   </div>
-                </div>
+                )}
+
+                {/* DEF-009 fix: OAuth providers get a placeholder button instead of key input */}
+                {isOAuth && (
+                  <div className="p-6 rounded-xl border border-border bg-card shadow-sm animate-in zoom-in-95">
+                    <h3 className="font-semibold mb-4 text-base">Authentication</h3>
+                    <div className="space-y-3">
+                      <Button variant="outline" className="w-full h-12 gap-3" disabled>
+                        <ExternalLink className="h-4 w-4" />
+                        Connect with OAuth (Desktop Only)
+                      </Button>
+                      <p className="text-[11px] text-muted-foreground">OAuth authentication is available in the desktop app. You can also paste an API key below as a fallback.</p>
+                      <Input
+                        type="password"
+                        value={apiKey}
+                        onChange={(e) => setApiKey(e.target.value)}
+                        placeholder="sk-... (optional fallback)"
+                        className="h-11 bg-background"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* DEF-008 fix: Only show API key for providers that need it */}
+                {needsKey && !isOAuth && (
+                  <div className="p-6 rounded-xl border border-border bg-card shadow-sm">
+                    <h3 className="font-semibold mb-4 text-base">API Credentials</h3>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Secret Key</label>
+                      <Input
+                        type="password"
+                        value={apiKey}
+                        onChange={(e) => setApiKey(e.target.value)}
+                        placeholder="sk-..."
+                        className="h-11 bg-background"
+                      />
+                      <p className="text-[11px] text-muted-foreground">Keys are stored locally in your browser/app cache.</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Informational note for local providers */}
+                {NO_KEY_PROVIDERS.includes(provider) && (
+                  <div className="p-4 rounded-xl border border-green-500/20 bg-green-500/5 text-sm text-green-600 dark:text-green-400 flex items-center gap-3">
+                    <Check className="h-5 w-5 shrink-0" />
+                    <span>{provider === 'ollama' ? 'Ollama' : 'LM Studio'} runs locally — no API key required.</span>
+                  </div>
+                )}
               </div>
             </TabsContent>
 
             <TabsContent value="backend" className="space-y-6 mt-8">
               <div className="p-6 rounded-xl border border-border bg-card shadow-sm">
                 <h3 className="font-semibold mb-4 text-base">Connection Strategy</h3>
-                <div className="space-y-3">
+                {/* DEF-001 fix: Use button-based selection instead of sr-only radio inputs */}
+                <div className="space-y-3" role="radiogroup" aria-label="Backend mode">
                   {[
                     { id: 'auto', label: 'Auto-detect', sub: 'Priority to local Hermes with direct fallback' },
                     { id: 'external', label: 'External Backend', sub: 'Connect to a remote or managed Hermes instance' },
                     { id: 'embedded', label: 'Direct Provider', sub: 'Bypass Hermes and talk directly to the AI service' },
                   ].map((m) => (
-                    <label
+                    <button
                       key={m.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={backendMode === m.id}
+                      onClick={() => setBackendMode(m.id)}
                       className={cn(
-                        'flex items-center gap-4 p-4 rounded-xl border cursor-pointer transition-all',
+                        'w-full flex items-center gap-4 p-4 rounded-xl border cursor-pointer transition-all text-left',
                         backendMode === m.id 
                           ? 'border-primary bg-primary/[0.03] ring-1 ring-primary/20' 
                           : 'border-border hover:bg-muted/30'
                       )}
                     >
                       <div className={cn(
-                        "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors",
+                        "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors shrink-0",
                         backendMode === m.id ? "border-primary" : "border-muted-foreground/30"
                       )}>
                         {backendMode === m.id && <div className="w-2.5 h-2.5 rounded-full bg-primary" />}
                       </div>
-                      <input
-                        type="radio"
-                        name="backendMode"
-                        checked={backendMode === m.id}
-                        onChange={() => setBackendMode(m.id)}
-                        className="sr-only"
-                      />
                       <div className="flex-1">
                         <div className="text-sm font-bold">{m.label}</div>
                         <div className="text-xs text-muted-foreground mt-0.5">{m.sub}</div>
                       </div>
-                    </label>
+                    </button>
                   ))}
                 </div>
               </div>
@@ -306,17 +388,19 @@ export default function SettingsPage({ onSave }) {
                 <div className="flex items-center gap-6">
                   <Input
                     type="number"
+                    min={1}
+                    max={500}
                     value={maxTurns}
-                    onChange={(e) => setMaxTurns(parseInt(e.target.value) || 90)}
+                    onChange={handleMaxTurnsChange}
                     className="w-28 h-11 bg-background text-lg font-bold"
                   />
                   <div className="flex-1 space-y-2">
                     <div className="flex justify-between text-xs font-bold">
                       <span>Max Iterations</span>
-                      <span>Safe default: 90</span>
+                      <span className="text-muted-foreground">Range: 1–500</span>
                     </div>
                     <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
-                      <div className="h-full bg-primary" style={{ width: `${Math.min(100, (maxTurns / 300) * 100)}%` }} />
+                      <div className="h-full bg-primary" style={{ width: `${Math.min(100, (maxTurns / 500) * 100)}%` }} />
                     </div>
                   </div>
                 </div>
@@ -418,6 +502,27 @@ export default function SettingsPage({ onSave }) {
                   </div>
                   <Switch checked={ttsEnabled} onCheckedChange={setTtsEnabled} />
                 </div>
+
+                {/* DEF-010 fix: TTS provider selector when TTS is enabled */}
+                {ttsEnabled && (
+                  <div className="p-5 rounded-xl border border-primary/20 bg-primary/[0.02] shadow-sm animate-in slide-in-from-top-2">
+                    <label className="text-[10px] font-black text-muted-foreground border-b border-border mb-4 block pb-1">TTS PROVIDER</label>
+                    <div className="flex bg-muted/50 p-1 rounded-lg border border-border/50">
+                      {['edge', 'elevenlabs', 'openai'].map((tp) => (
+                        <button
+                          key={tp}
+                          onClick={() => setTtsProvider(tp)}
+                          className={cn(
+                            "flex-1 py-2 text-xs font-bold rounded-md transition-all capitalize",
+                            ttsProvider === tp ? "bg-background text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          {tp}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </TabsContent>
           </Tabs>
