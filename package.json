@@ -16,7 +16,8 @@
     "test:e2e": "playwright test",
     "test:e2e:update": "playwright test --update-snapshots",
     "scan:secrets": "node scripts/scan-secrets.mjs",
-    "build:backend": "bash scripts/build-bundled-backend.sh",
+    "build:backend": "bash scripts/build-bundled-backend.sh --exe",
+    "build:backend:source": "bash scripts/build-bundled-backend.sh --source",
     "update:backend": "bash scripts/update-bundled-backend.sh",
     "dist:full": "npm run build:backend && npm run dist:win"
   },

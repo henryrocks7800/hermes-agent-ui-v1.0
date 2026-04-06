@@ -13,8 +13,13 @@ out/
 .env
 .env.local
 
-# Bundled backend (compiled binaries)
+# Bundled backend (compiled binaries + build artifacts)
 bundled-backend/hermes-backend/
+bundled-backend/hermes-src/
+bundled-backend/.build-venv/
+bundled-backend/pyinstaller-dist/
+bundled-backend/pyinstaller-build/
+bundled-backend/*.spec
 
 # Windows artifacts
 *.Zone.Identifier

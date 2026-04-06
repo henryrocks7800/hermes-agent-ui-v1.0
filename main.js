@@ -56,17 +56,32 @@ function createWindow() {
 
 // ── Hermes Agent gateway lifecycle ─────────────────────────────────────────────
 
-function getHermesDir() {
-  // Check bundled backend first, then user's local install
-  const bundled = path.join(process.resourcesPath || __dirname, 'hermes-backend')
-  if (fs.existsSync(path.join(bundled, 'hermes'))) return bundled
+function getHermesExe() {
+  // Priority 1: Bundled standalone exe (no Python required)
+  const exeName = process.platform === 'win32' ? 'hermes-gateway.exe' : 'hermes-gateway'
+  const bundledExe = path.join(process.resourcesPath || __dirname, 'hermes-backend', exeName)
+  if (fs.existsSync(bundledExe)) return { exe: bundledExe, mode: 'standalone' }
+
+  // Priority 2: Bundled Python source
+  const bundledSrc = path.join(process.resourcesPath || __dirname, 'hermes-backend', 'hermes')
+  if (fs.existsSync(bundledSrc)) return { dir: path.dirname(bundledSrc), script: bundledSrc, mode: 'python' }
+
+  // Priority 3: User's local install (~/.hermes/hermes-agent)
   const local = path.join(process.env.HOME || process.env.USERPROFILE, '.hermes', 'hermes-agent')
-  if (fs.existsSync(path.join(local, 'hermes'))) return local
+  if (fs.existsSync(path.join(local, 'hermes'))) return { dir: local, script: path.join(local, 'hermes'), mode: 'python' }
+
   return null
 }
 
+// Keep getHermesDir for the update handler
+function getHermesDir() {
+  const info = getHermesExe()
+  if (!info) return null
+  if (info.mode === 'standalone') return path.dirname(info.exe)
+  return info.dir
+}
+
 function findPython() {
-  // On Windows, python3 usually doesn't exist — try python and py first
   if (process.platform === 'win32') {
     for (const cmd of ['python', 'py', 'python3']) {
       try {
@@ -91,23 +106,37 @@ async function startHermesGateway() {
     return
   }
 
-  const hermesDir = getHermesDir()
-  if (!hermesDir) {
+  const hermesInfo = getHermesExe()
+  if (!hermesInfo) {
     console.warn('[Hermes] No Hermes Agent installation found — running in UI-only mode')
     return
   }
 
-  console.log('[Hermes] Starting gateway from', hermesDir)
+  console.log('[Hermes] Starting gateway in', hermesInfo.mode, 'mode')
 
   const logDir = path.join(process.env.HOME || process.env.USERPROFILE, '.hermes', 'logs')
   if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true })
   const logStream = fs.createWriteStream(path.join(logDir, 'gateway-desktop.log'), { flags: 'a' })
 
-  const python = findPython()
-  console.log('[Hermes] Using Python:', python)
+  let spawnCmd, spawnArgs, spawnCwd
 
-  hermesProcess = spawn(python, [path.join(hermesDir, 'hermes'), 'gateway', 'run', '--quiet'], {
-    cwd: hermesDir,
+  if (hermesInfo.mode === 'standalone') {
+    // Standalone exe — no Python needed
+    spawnCmd = hermesInfo.exe
+    spawnArgs = ['gateway', 'run', '--quiet']
+    spawnCwd = path.dirname(hermesInfo.exe)
+    console.log('[Hermes] Using standalone exe:', spawnCmd)
+  } else {
+    // Python source — requires Python on the machine
+    const python = findPython()
+    spawnCmd = python
+    spawnArgs = [hermesInfo.script, 'gateway', 'run', '--quiet']
+    spawnCwd = hermesInfo.dir
+    console.log('[Hermes] Using Python:', python, 'from', hermesInfo.dir)
+  }
+
+  hermesProcess = spawn(spawnCmd, spawnArgs, {
+    cwd: spawnCwd,
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: false,
     env: { ...process.env, API_SERVER_PORT: String(HERMES_PORT) },
