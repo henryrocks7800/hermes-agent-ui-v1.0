@@ -32,5 +32,68 @@ Here are the top things we are looking for the community to help build next:
 4. Run the tests with `npm run test:e2e` to make sure everything works perfectly.
 5. Open a Pull Request!
 
+## Building
+
+### Development Mode
+Run the web UI in hot-reload development mode:
+```bash
+npm run dev:web
+```
+Opens at http://localhost:5173
+
+### Web Build
+Build the web assets for production:
+```bash
+npm run build
+```
+Output goes to `web-dist/`
+
+### Testing
+Run the end-to-end test suite (Playwright):
+```bash
+npm run test:e2e
+```
+
+Run QA settings tests only:
+```bash
+npx playwright test qa-settings
+```
+
+### Windows Installer (Automated)
+The easiest way to build the Windows installer is to use the provided PowerShell script. This script:
+1. Copies the project to a temporary Windows build directory (avoiding WSL UNC path issues)
+2. Installs dependencies
+3. Builds web assets with Vite
+4. Packages the app with electron-builder
+5. Verifies the build output
+6. Copies the installer back to the project `dist/` folder
+
+**From Windows (PowerShell):**
+```powershell
+PowerShell -ExecutionPolicy Bypass -File .\scripts\Build-Windows-Installer.ps1
+```
+
+**From WSL/Linux:**
+```bash
+powershell.exe -ExecutionPolicy Bypass -File "/mnt/c/tmp/Build-Windows-Installer.ps1"
+```
+(Note: copy the script to your Windows temp folder first if needed)
+
+The resulting `.exe` installer will be in `dist/` and ready to ship.
+
+### Windows Installer (Manual)
+If you prefer to build manually on Windows:
+```powershell
+npm install
+npm run build
+npm run dist:win
+```
+
+### Electron Dev Mode
+Launch the Electron app with the latest build:
+```bash
+npm run electron:dev
+```
+
 ## License
 MIT License - See the [LICENSE](LICENSE) file for details.
