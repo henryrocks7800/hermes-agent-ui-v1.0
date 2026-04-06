@@ -58,14 +58,11 @@
       { "from": "bundled-backend/hermes-backend", "to": "hermes-backend", "filter": ["**/*"] }
     ],
     "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }],
-      "icon": "public/icon.ico"
+      "target": [{ "target": "nsis", "arch": ["x64"] }]
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "installerIcon": "public/icon.ico",
-      "uninstallerIcon": "public/icon.ico"
+      "allowToChangeInstallationDirectory": true
     }
   }
 }
