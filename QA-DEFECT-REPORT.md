@@ -35,7 +35,7 @@ ALL 15 DEFECTS FIXED — verified with Playwright E2E tests.
 
 ### DEF-002: Settings page missing Base URL input for custom/ollama/lmstudio providers
 - **Feature:** Settings → Model Tab → Custom Provider
-- **Inferred Requirement:** When the "custom" provider is selected, the user must be able to specify the API base URL (e.g., `http://172.30.224.1:42424/v1`). Same for ollama/lmstudio which have non-standard URLs.
+- **Inferred Requirement:** When the "custom" provider is selected, the user must be able to specify the API base URL (e.g., `http://localhost:42424/v1`). Same for ollama/lmstudio which have non-standard URLs.
 - **Expected Result:** A "Base URL" input field appears in the Model tab when custom, ollama, or lmstudio is selected — matching the onboarding wizard behavior.
 - **Actual Result:** No Base URL input field is rendered. Only the generic "API Credentials / Secret Key" field is shown. Users who completed onboarding with a custom URL cannot change it from Settings — they must re-run the wizard.
 - **Root Cause:** `SettingsPage.jsx` Model tab (lines 161-222) renders provider buttons, model input, and API key input, but omits the conditional base URL input that `ProviderStep.jsx` (onboarding) includes for custom/ollama/lmstudio.
@@ -128,7 +128,7 @@ ALL 15 DEFECTS FIXED — verified with Playwright E2E tests.
 
 ### DEF-013: CSP connect-src wildcard warnings in console
 - **Feature:** Content Security Policy
-- **Details:** The app emits 16 console errors for invalid CSP `connect-src` sources using wildcard patterns (`http://172.16.*.*` through `http://172.31.*.*`). CSP doesn't support wildcard syntax in host patterns.
+- **Details:** The app emits 16 console errors for invalid CSP `connect-src` sources using wildcard patterns (`http://example.com` through `http://example.com`). CSP doesn't support wildcard syntax in host patterns.
 - **Impact:** Console noise only; no functional impact. The CSP likely intended to whitelist the 172.16.0.0/12 private range but uses invalid syntax.
 
 ### DEF-014: /help quick-action button only inserts "/"
@@ -165,6 +165,6 @@ ALL 15 DEFECTS FIXED — verified with Playwright E2E tests.
 | Update Engine disabled in web mode | ✅ Correctly gated to desktop-only |
 | Onboarding wizard shows all provider cards | ✅ 9 providers with descriptions |
 | Onboarding: Gemini shows API key + model inputs | ✅ |
-| Network routing respects saved external URL | ✅ Chat request sent to http://172.30.224.1:42424/v1 (correct) |
+| Network routing respects saved external URL | ✅ Chat request sent to http://localhost:42424/v1 (correct) |
 | Threads page shows empty state | ✅ "No threads yet" |
 | Skills page shows skill cards with categories | ✅ |
