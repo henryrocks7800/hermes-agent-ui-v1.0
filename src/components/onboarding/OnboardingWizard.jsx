@@ -1,47 +1,36 @@
 import { useState } from 'react'
 import { storage, KEYS } from '@/lib/storage'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { Switch } from '@/components/ui/switch'
-import { Separator } from '@/components/ui/separator'
-import { Badge } from '@/components/ui/badge'
-import { cn } from '@/lib/utils'
-import { PROVIDER_MODELS } from '@/lib/commands'
-import { Check, Eye, EyeOff, ArrowRight, ArrowLeft } from 'lucide-react'
-
-// Step components
 import WelcomeStep from './steps/WelcomeStep.jsx'
 import ProviderStep from './steps/ProviderStep.jsx'
 import BackendStep from './steps/BackendStep.jsx'
 import AgentSettingsStep from './steps/AgentSettingsStep.jsx'
 import ToolsStep from './steps/ToolsStep.jsx'
+import CompletionStep from './steps/CompletionStep.jsx'
 
 export default function OnboardingWizard({ onComplete }) {
   const [step, setStep] = useState(0)
-  const [settings, setSettings] = useState(() => ({
-    provider: storage.get(KEYS.PROVIDER, ''),
-    apiKey: storage.get(KEYS.API_KEY, ''),
-    baseUrl: storage.get(KEYS.BASE_URL, ''),
-    model: storage.get(KEYS.MODEL, ''),
-    backendMode: storage.get(KEYS.BACKEND_MODE, 'auto'),
-    externalUrl: storage.get(KEYS.EXTERNAL_URL, 'http://localhost:42424/v1'),
-    maxTurns: storage.get(KEYS.MAX_TURNS, 90),
-    reasoningEffort: storage.get(KEYS.REASONING, 'medium'),
-    toolProgress: storage.get(KEYS.TOOL_PROGRESS, 'all'),
-    webSearchEnabled: storage.get('webSearchEnabled', false),
-    firecrawlApiKey: storage.get('firecrawlApiKey', ''),
-    visionEnabled: storage.get('visionEnabled', false),
-    ttsEnabled: storage.get('ttsEnabled', false),
-    ttsProvider: storage.get('ttsProvider', 'edge'),
-  }))
+  const [settings, setSettings] = useState({
+    provider: '',
+    apiKey: '',
+    baseUrl: '',
+    model: '',
+    backendMode: 'auto',
+    externalUrl: 'http://localhost:42424/v1',
+    maxTurns: 90,
+    reasoningEffort: 'medium',
+    toolProgress: 'all',
+    webSearchEnabled: false,
+    firecrawlApiKey: '',
+    visionEnabled: false,
+    ttsEnabled: false,
+    ttsProvider: 'edge',
+  })
 
   const updateSettings = (updates) => {
     setSettings(prev => ({ ...prev, ...updates }))
   }
 
   const handleComplete = () => {
-    // Save all settings to localStorage
     storage.set(KEYS.PROVIDER, settings.provider)
     storage.set(KEYS.MODEL, settings.model)
     storage.set(KEYS.API_KEY, settings.apiKey)
@@ -51,6 +40,11 @@ export default function OnboardingWizard({ onComplete }) {
     storage.set(KEYS.MAX_TURNS, settings.maxTurns)
     storage.set(KEYS.REASONING, settings.reasoningEffort)
     storage.set(KEYS.TOOL_PROGRESS, settings.toolProgress)
+    storage.set('webSearchEnabled', settings.webSearchEnabled)
+    storage.set('firecrawlApiKey', settings.firecrawlApiKey)
+    storage.set('visionEnabled', settings.visionEnabled)
+    storage.set('ttsEnabled', settings.ttsEnabled)
+    storage.set('ttsProvider', settings.ttsProvider)
     storage.set(KEYS.ONBOARDING_DONE, true)
     onComplete()
   }
@@ -58,16 +52,14 @@ export default function OnboardingWizard({ onComplete }) {
   return (
     <div className="fixed inset-0 bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-lg">
-        {/* Progress dots for steps 1-4 */}
         {step > 0 && step <= 4 && (
           <div className="flex gap-2 justify-center mb-6">
             {[1, 2, 3, 4].map(i => (
               <div
                 key={i}
-                className={cn(
-                  'h-1.5 w-6 rounded-full transition-colors',
+                className={`h-1.5 w-6 rounded-full transition-colors ${
                   i === step ? 'bg-primary' : i < step ? 'bg-primary/40' : 'bg-muted'
-                )}
+                }`}
               />
             ))}
           </div>
@@ -105,8 +97,14 @@ export default function OnboardingWizard({ onComplete }) {
             <ToolsStep
               settings={settings}
               updateSettings={updateSettings}
-              onComplete={handleComplete}
+              onNext={() => setStep(5)}
               onBack={() => setStep(3)}
+            />
+          )}
+          {step === 5 && (
+            <CompletionStep
+              settings={settings}
+              onComplete={handleComplete}
             />
           )}
         </div>

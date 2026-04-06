@@ -37,7 +37,7 @@ export default function BackendStep({ settings, updateSettings, onNext, onBack }
     }
   }
 
-  const canProceed = settings.backendMode !== 'external' || connectionResult?.success
+  const canProceed = settings.backendMode !== 'external' || settings.externalUrl.trim().length > 0
 
   return (
     <div className="bg-card border border-border rounded-xl p-6">

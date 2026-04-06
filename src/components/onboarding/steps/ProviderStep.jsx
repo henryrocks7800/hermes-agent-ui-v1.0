@@ -50,7 +50,7 @@ export default function ProviderStep({ settings, updateSettings, onNext, onBack 
       return
     }
 
-    const requiresApiKey = ['openai', 'anthropic', 'openrouter', 'gemini', 'custom'].includes(settings.provider)
+    const requiresApiKey = ['openai', 'anthropic', 'openrouter', 'gemini'].includes(settings.provider)
     if (requiresApiKey && !settings.apiKey.trim()) {
       setError('API key is required for this provider.')
       return

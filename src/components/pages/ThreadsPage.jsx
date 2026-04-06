@@ -4,7 +4,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
-import { Search, Trash2, Edit2, MessageSquare } from 'lucide-react'
+import { Search, Trash2, Edit2, MessageSquare, MoreVertical } from 'lucide-react'
 
 export default function ThreadsPage({ threads, onSelectThread, onDeleteThread, onRenameThread }) {
   const [searchQuery, setSearchQuery] = useState('')
@@ -16,11 +16,12 @@ export default function ThreadsPage({ threads, onSelectThread, onDeleteThread, o
   const menuRef = useRef(null)
 
   const filteredThreads = threads.filter((t) =>
-    t.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    t.messages?.some(m => m.content?.toLowerCase().includes(searchQuery.toLowerCase()))
+    (t.title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    t.messages?.some(m => (m.content || '').toLowerCase().includes(searchQuery.toLowerCase()))
   )
 
   const formatDate = (isoString) => {
+    if (!isoString) return 'Unknown date'
     const date = new Date(isoString)
     const now = new Date()
     const diff = now - date
@@ -47,11 +48,16 @@ export default function ThreadsPage({ threads, onSelectThread, onDeleteThread, o
 
   const handleContextMenu = (e, thread) => {
     e.preventDefault()
-    setContextMenu({
-      x: e.pageX,
-      y: e.pageY,
-      thread
-    })
+    // Calculate position to prevent menu overflow
+    const menuWidth = 160
+    const menuHeight = 85
+    let x = e.pageX
+    let y = e.pageY
+    
+    if (x + menuWidth > window.innerWidth) x -= menuWidth
+    if (y + menuHeight > window.innerHeight) y -= menuHeight
+
+    setContextMenu({ x, y, thread })
   }
 
   const openRename = (thread) => {
@@ -80,7 +86,7 @@ export default function ThreadsPage({ threads, onSelectThread, onDeleteThread, o
   }
 
   return (
-    <div className="h-full flex flex-col p-6">
+    <div className="h-full flex flex-col p-6 bg-background animate-in fade-in duration-300">
       <div className="mb-6">
         <h1 className="text-2xl font-bold mb-1">Threads</h1>
         <p className="text-sm text-muted-foreground">Browse and manage your conversation history.</p>
@@ -93,62 +99,84 @@ export default function ThreadsPage({ threads, onSelectThread, onDeleteThread, o
             placeholder="Search threads..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
+            className="pl-9 bg-card"
           />
         </div>
       </div>
 
       <ScrollArea className="flex-1 -mx-2 px-2">
-        <div className="space-y-2 pb-4">
+        <div className="space-y-2 pb-10">
           {filteredThreads.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              {threads.length === 0 ? 'No threads yet' : 'No matching threads'}
+            <div className="text-center py-20 bg-muted/20 rounded-xl border border-dashed border-border">
+              <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mx-auto mb-3">
+                <MessageSquare className="h-6 w-6 text-muted-foreground/50" />
+              </div>
+              <p className="text-sm text-muted-foreground font-medium">
+                {threads.length === 0 ? 'No threads yet' : 'No matching threads found'}
+              </p>
             </div>
           ) : (
             filteredThreads.map((thread) => (
               <div
                 key={thread.id}
                 className={cn(
-                  'p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors cursor-pointer group',
-                  contextMenu?.thread.id === thread.id && 'bg-accent/50'
+                  'p-4 rounded-lg border bg-card hover:bg-accent/50 transition-all cursor-pointer group shadow-sm hover:shadow-md',
+                  contextMenu?.thread.id === thread.id && 'bg-accent border-primary/20 ring-1 ring-primary/10'
                 )}
                 onClick={() => onSelectThread(thread.id)}
                 onContextMenu={(e) => handleContextMenu(e, thread)}
               >
                 <div className="flex items-center gap-4">
-                  <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center shrink-0">
-                    <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                  <div className="h-10 w-10 rounded-full bg-primary/5 border border-primary/10 flex items-center justify-center shrink-0">
+                    <MessageSquare className="h-4 w-4 text-primary/70" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium truncate">{thread.title || 'Untitled thread'}</div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      {formatDate(thread.createdAt)} • {thread.messages?.length || 0} messages
+                    <div className="font-semibold truncate text-sm">{thread.title || 'Untitled thread'}</div>
+                    <div className="text-[11px] text-muted-foreground mt-1 flex items-center gap-2">
+                      <span className="bg-muted px-1.5 py-0.5 rounded capitalize">{formatDate(thread.createdAt)}</span>
+                      <span>•</span>
+                      <span>{thread.messages?.length || 0} messages</span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                  
+                  <div className="flex items-center gap-1">
+                    <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          openRename(thread)
+                        }}
+                        title="Rename"
+                      >
+                        <Edit2 className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          openDelete(thread)
+                        }}
+                        title="Delete"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                    
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-8 w-8 ml-1"
                       onClick={(e) => {
                         e.stopPropagation()
-                        openRename(thread)
+                        handleContextMenu(e, thread)
                       }}
-                      title="Rename"
                     >
-                      <Edit2 className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        openDelete(thread)
-                      }}
-                      title="Delete"
-                    >
-                      <Trash2 className="h-4 w-4" />
+                      <MoreVertical className="h-4 w-4 text-muted-foreground/50" />
                     </Button>
                   </div>
                 </div>
@@ -158,47 +186,47 @@ export default function ThreadsPage({ threads, onSelectThread, onDeleteThread, o
         </div>
       </ScrollArea>
 
-      {/* Custom Context Menu */}
       {contextMenu && (
         <div
           ref={menuRef}
-          className="fixed z-50 min-w-[160px] bg-popover text-popover-foreground border border-border rounded-md shadow-md p-1 animate-in fade-in zoom-in-95"
+          className="fixed z-50 min-w-[160px] bg-popover text-popover-foreground border border-border rounded-md shadow-xl p-1 animate-in fade-in zoom-in-95"
           style={{ top: contextMenu.y, left: contextMenu.x }}
         >
           <button
-            className="w-full text-left px-2 py-1.5 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground flex items-center gap-2"
+            className="w-full text-left px-2 py-1.5 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground flex items-center gap-2 transition-colors"
             onClick={(e) => {
               e.stopPropagation()
               openRename(contextMenu.thread)
             }}
           >
-            <Edit2 className="h-4 w-4" />
-            Rename
+            <Edit2 className="h-4 w-4 text-muted-foreground" />
+            <span>Rename thread</span>
           </button>
+          <div className="h-px bg-border my-1" />
           <button
-            className="w-full text-left px-2 py-1.5 text-sm rounded-sm text-destructive hover:bg-destructive hover:text-destructive-foreground flex items-center gap-2 mt-1"
+            className="w-full text-left px-2 py-1.5 text-sm rounded-sm text-destructive hover:bg-destructive hover:text-destructive-foreground flex items-center gap-2 transition-colors"
             onClick={(e) => {
               e.stopPropagation()
               openDelete(contextMenu.thread)
             }}
           >
             <Trash2 className="h-4 w-4" />
-            Delete
+            <span>Delete thread</span>
           </button>
         </div>
       )}
 
-      {/* Rename Dialog */}
       <Dialog open={!!renameDialog} onOpenChange={(open) => !open && setRenameDialog(null)}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Rename Thread</DialogTitle>
+            <DialogDescription>Enter a new name for this conversation.</DialogDescription>
           </DialogHeader>
           <div className="py-4">
             <Input
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
-              placeholder="Enter thread title..."
+              placeholder="e.g. My project discussion"
               autoFocus
               onKeyDown={(e) => {
                 if (e.key === 'Enter') confirmRename()
@@ -212,7 +240,6 @@ export default function ThreadsPage({ threads, onSelectThread, onDeleteThread, o
         </DialogContent>
       </Dialog>
 
-      {/* Delete Dialog */}
       <Dialog open={!!deleteDialog} onOpenChange={(open) => !open && setDeleteDialog(null)}>
         <DialogContent>
           <DialogHeader>
@@ -221,9 +248,9 @@ export default function ThreadsPage({ threads, onSelectThread, onDeleteThread, o
               Are you sure you want to delete "{deleteDialog?.title || 'this thread'}"? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="mt-4">
+          <DialogFooter className="mt-4 gap-2">
             <Button variant="outline" onClick={() => setDeleteDialog(null)}>Cancel</Button>
-            <Button variant="destructive" onClick={confirmDelete}>Delete</Button>
+            <Button variant="destructive" onClick={confirmDelete} className="shadow-sm">Delete Forever</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -25,6 +25,13 @@ export default function AutomationsPage() {
 
   const [deleteDialog, setDeleteDialog] = useState(null)
 
+  const resetForm = () => {
+    setNewName('')
+    setNewPrompt('')
+    setNewSchedule('')
+    setNewDialog(false)
+  }
+
   const saveJobs = (newJobs) => {
     setJobs(newJobs)
     storage.set('hermes.automations', newJobs)
@@ -57,15 +64,12 @@ export default function AutomationsPage() {
         lastRun: 'Never'
       }
       saveJobs([...jobs, newJob])
-      setNewDialog(false)
-      setNewName('')
-      setNewPrompt('')
-      setNewSchedule('')
+      resetForm()
     }
   }
 
   return (
-    <div className="h-full flex flex-col p-6">
+    <div className="h-full flex flex-col p-6 bg-background animate-in fade-in duration-300">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold mb-1">Automations</h1>
@@ -88,19 +92,19 @@ export default function AutomationsPage() {
               <div
                 key={job.id}
                 className={cn(
-                  "p-5 rounded-lg border bg-card transition-colors flex items-center justify-between group",
-                  job.status === 'paused' && "opacity-60"
+                  "p-5 rounded-lg border bg-card transition-colors flex items-center justify-between group shadow-sm hover:shadow-md",
+                  job.status === 'paused' && "opacity-60 grayscale-[0.5]"
                 )}
               >
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-                    <Clock className="h-6 w-6 text-primary" />
+                  <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center shrink-0 border", job.status === 'active' ? "bg-primary/5 border-primary/10 text-primary" : "bg-muted border-border text-muted-foreground")}>
+                    <Clock className="h-6 w-6" />
                   </div>
                   <div>
                     <div className="font-semibold text-lg">{job.name}</div>
                     <div className="text-sm text-muted-foreground flex items-center gap-2 mt-0.5">
                       <Calendar className="h-3.5 w-3.5" />
-                      <code className="bg-muted px-1.5 py-0.5 rounded text-xs">{job.schedule}</code>
+                      <code className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-mono border">{job.schedule}</code>
                     </div>
                   </div>
                 </div>
@@ -108,7 +112,7 @@ export default function AutomationsPage() {
                 <div className="flex items-center gap-6">
                   <div className="text-right hidden sm:block">
                     <div className="text-sm font-medium mb-1">
-                      <Badge variant={job.status === 'active' ? 'default' : 'secondary'} className="capitalize">
+                      <Badge variant={job.status === 'active' ? 'default' : 'outline'} className="capitalize">
                         {job.status}
                       </Badge>
                     </div>
@@ -121,7 +125,7 @@ export default function AutomationsPage() {
                     <Button 
                       variant="ghost" 
                       size="icon" 
-                      className="h-8 w-8"
+                      className="h-9 w-9 bg-muted/50 hover:bg-muted"
                       onClick={() => toggleStatus(job.id)}
                       title={job.status === 'active' ? 'Pause' : 'Resume'}
                     >
@@ -130,7 +134,7 @@ export default function AutomationsPage() {
                     <Button 
                       variant="ghost" 
                       size="icon" 
-                      className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      className="h-9 w-9 text-destructive/70 hover:text-destructive hover:bg-destructive/10 bg-muted/50"
                       onClick={() => setDeleteDialog(job)}
                       title="Delete"
                     >
@@ -144,8 +148,7 @@ export default function AutomationsPage() {
         </div>
       </ScrollArea>
 
-      {/* Create Dialog */}
-      <Dialog open={newDialog} onOpenChange={setNewDialog}>
+      <Dialog open={newDialog} onOpenChange={(o) => !o && resetForm()}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>Create Automation</DialogTitle>
@@ -156,59 +159,59 @@ export default function AutomationsPage() {
           
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Name</label>
+              <label className="text-sm font-medium uppercase text-[10px] font-bold text-muted-foreground tracking-widest">Name</label>
               <Input 
                 value={newName} 
                 onChange={(e) => setNewName(e.target.value)} 
                 placeholder="e.g. Nightly Code Review" 
+                className="bg-muted/30"
               />
             </div>
             
             <div className="space-y-2">
-              <label className="text-sm font-medium">Task Prompt</label>
+              <label className="text-sm font-medium uppercase text-[10px] font-bold text-muted-foreground tracking-widest">Task Prompt</label>
               <Textarea 
                 value={newPrompt} 
                 onChange={(e) => setNewPrompt(e.target.value)} 
                 placeholder="What should the agent do?" 
-                className="h-24 resize-none"
+                className="h-24 resize-none bg-muted/30"
               />
             </div>
             
             <div className="space-y-2">
-              <label className="text-sm font-medium">Schedule (Cron)</label>
+              <label className="text-sm font-medium uppercase text-[10px] font-bold text-muted-foreground tracking-widest">Schedule (Cron)</label>
               <Input 
                 value={newSchedule} 
                 onChange={(e) => setNewSchedule(e.target.value)} 
                 placeholder="0 9 * * *" 
-                className="font-mono text-sm"
+                className="font-mono text-sm bg-muted/30"
               />
-              <p className="text-xs text-muted-foreground mt-1">
-                E.g. <code>0 9 * * *</code> for every day at 9 AM.
+              <p className="text-[10px] text-muted-foreground mt-1 bg-muted p-1 rounded inline-block">
+                Example: <code>0 9 * * *</code> (Every day at 9 AM)
               </p>
             </div>
           </div>
           
           <DialogFooter>
-            <Button variant="outline" onClick={() => setNewDialog(false)}>Cancel</Button>
+            <Button variant="outline" onClick={resetForm}>Cancel</Button>
             <Button onClick={handleCreate} disabled={!newName.trim() || !newPrompt.trim() || !newSchedule.trim()}>
-              Create Task
+              Create Protocol
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Delete Dialog */}
       <Dialog open={!!deleteDialog} onOpenChange={(open) => !open && setDeleteDialog(null)}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Delete Automation</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete "{deleteDialog?.name}"? This action cannot be undone.
+            <DialogTitle className="uppercase italic font-black">Terminate Automation</DialogTitle>
+            <DialogDescription className="pt-2">
+              Are you sure you want to delete "{deleteDialog?.name}"? Scheduled protocols cannot be recovered once purged.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="mt-4">
-            <Button variant="outline" onClick={() => setDeleteDialog(null)}>Cancel</Button>
-            <Button variant="destructive" onClick={confirmDelete}>Delete</Button>
+          <DialogFooter className="mt-8 gap-3 sm:flex-row flex-col">
+            <Button variant="outline" onClick={() => setDeleteDialog(null)} className="h-11 flex-1 font-bold">Abort</Button>
+            <Button variant="destructive" onClick={confirmDelete} className="h-11 flex-1 font-bold shadow-lg shadow-destructive/20">Purge Task</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

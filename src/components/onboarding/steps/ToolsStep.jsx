@@ -10,7 +10,7 @@ const ttsProviders = [
   { id: 'openai', label: 'OpenAI TTS' },
 ]
 
-export default function ToolsStep({ settings, updateSettings, onComplete, onBack }) {
+export default function ToolsStep({ settings, updateSettings, onComplete, onNext, onBack }) {
   return (
     <div className="bg-card border border-border rounded-xl p-6">
       <div className="mb-6">
@@ -92,8 +92,8 @@ export default function ToolsStep({ settings, updateSettings, onComplete, onBack
           <ArrowLeft className="h-4 w-4" />
           Back
         </Button>
-        <Button onClick={onComplete} className="gap-2">
-          Complete Setup
+        <Button onClick={onNext} className="gap-2">
+          Next
         </Button>
       </div>
     </div>

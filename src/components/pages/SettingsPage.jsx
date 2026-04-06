@@ -13,27 +13,26 @@ import { ArrowLeft, ArrowRight, Check, X, Loader2, ExternalLink, Github, RotateC
 import { cn } from '@/lib/utils'
 
 export default function SettingsPage({ onSave }) {
-  const [provider, setProvider] = useState(storage.get(KEYS.PROVIDER, 'openai'))
-  const [model, setModel] = useState(storage.get(KEYS.MODEL, 'gpt-4o'))
-  const [apiKey, setApiKey] = useState(storage.get(KEYS.API_KEY, ''))
-  const [baseUrl, setBaseUrl] = useState(storage.get(KEYS.BASE_URL, 'http://localhost:42424/v1'))
-  const [backendMode, setBackendMode] = useState(storage.get(KEYS.BACKEND_MODE, 'auto'))
-  const [externalUrl, setExternalUrl] = useState(storage.get(KEYS.EXTERNAL_URL, 'http://localhost:42424/v1'))
-  const [maxTurns, setMaxTurns] = useState(storage.get(KEYS.MAX_TURNS, 90))
-  const [reasoningEffort, setReasoningEffort] = useState(storage.get(KEYS.REASONING, 'medium'))
-  const [toolProgress, setToolProgress] = useState(storage.get(KEYS.TOOL_PROGRESS, 'all'))
-  const [webSearchEnabled, setWebSearchEnabled] = useState(storage.get('webSearchEnabled', false))
-  const [firecrawlApiKey, setFirecrawlApiKey] = useState(storage.get('firecrawlApiKey', ''))
-  const [visionEnabled, setVisionEnabled] = useState(storage.get('visionEnabled', false))
-  const [ttsEnabled, setTtsEnabled] = useState(storage.get('ttsEnabled', false))
-  const [ttsProvider, setTtsProvider] = useState(storage.get('ttsProvider', 'edge'))
+  const [provider, setProvider] = useState(() => storage.get(KEYS.PROVIDER, 'openai'))
+  const [model, setModel] = useState(() => storage.get(KEYS.MODEL, 'gpt-4o'))
+  const [apiKey, setApiKey] = useState(() => storage.get(KEYS.API_KEY, ''))
+  const [baseUrl, setBaseUrl] = useState(() => storage.get(KEYS.BASE_URL, 'http://localhost:42424/v1'))
+  const [backendMode, setBackendMode] = useState(() => storage.get(KEYS.BACKEND_MODE, 'auto'))
+  const [externalUrl, setExternalUrl] = useState(() => storage.get(KEYS.EXTERNAL_URL, 'http://localhost:42424/v1'))
+  const [maxTurns, setMaxTurns] = useState(() => storage.get(KEYS.MAX_TURNS, 90))
+  const [reasoningEffort, setReasoningEffort] = useState(() => storage.get(KEYS.REASONING, 'medium'))
+  const [toolProgress, setToolProgress] = useState(() => storage.get(KEYS.TOOL_PROGRESS, 'all'))
+  const [webSearchEnabled, setWebSearchEnabled] = useState(() => storage.get('webSearchEnabled', false))
+  const [firecrawlApiKey, setFirecrawlApiKey] = useState(() => storage.get('firecrawlApiKey', ''))
+  const [visionEnabled, setVisionEnabled] = useState(() => storage.get('visionEnabled', false))
+  const [ttsEnabled, setTtsEnabled] = useState(() => storage.get('ttsEnabled', false))
+  const [ttsProvider, setTtsProvider] = useState(() => storage.get('ttsProvider', 'edge'))
+  
   const [testingConnection, setTestingConnection] = useState(false)
   const [connectionResult, setConnectionResult] = useState(null)
-  
   const [showSaveToast, setShowSaveToast] = useState(false)
   const [rerunWizardDialog, setRerunWizardDialog] = useState(false)
   
-  // Updater state
   const [updateDialog, setUpdateDialog] = useState(false)
   const [updating, setUpdating] = useState(false)
   const [updateLog, setUpdateLog] = useState([])
@@ -80,16 +79,14 @@ export default function SettingsPage({ onSave }) {
       } else {
         const response = await fetch(`${url.replace(/\/$/, '')}/models`, {
           method: 'GET',
-          signal: AbortSignal.timeout(2000),
+          signal: AbortSignal.timeout(3000),
         })
         ok = response.ok
       }
       
-      if (ok) {
-        setConnectionResult({ success: true, message: 'Connection successful!' })
-      } else {
-        setConnectionResult({ success: false, message: `Connection failed` })
-      }
+      setConnectionResult(ok 
+        ? { success: true, message: 'Connected to Hermes backend!' } 
+        : { success: false, message: 'Backend unreachable. Check URL or firewall.' })
     } catch (err) {
       setConnectionResult({ success: false, message: err.message || 'Connection failed' })
     } finally {
@@ -97,15 +94,15 @@ export default function SettingsPage({ onSave }) {
     }
   }
 
+  const handleRerunWizard = () => {
+    storage.remove(KEYS.ONBOARDING_DONE)
+    window.location.reload()
+  }
+
   const handleCheckForUpdates = () => {
     if (window.hermesDesktop?.openExternal) {
       window.hermesDesktop.openExternal('https://github.com/henryrocks7800/hermes-agent-desktop/releases')
     }
-  }
-
-  const handleRerunWizard = () => {
-    storage.remove(KEYS.ONBOARDING_DONE)
-    window.location.reload()
   }
 
   const handleUpdateBackend = async () => {
@@ -122,7 +119,7 @@ export default function SettingsPage({ onSave }) {
 
     try {
       const result = await window.hermesDesktop?.updateBackend()
-      setUpdateResult(result || { success: false, message: 'Update mechanism not available.' })
+      setUpdateResult(result || { success: false, message: 'Update mechanism only available in Desktop App.' })
     } catch (err) {
       setUpdateResult({ success: false, message: err.message })
     } finally {
@@ -130,352 +127,457 @@ export default function SettingsPage({ onSave }) {
     }
   }
 
-  const isDesktop = window.hermesDesktop?.isDesktop
+  const isDesktop = !!window.hermesDesktop?.isDesktop
 
   return (
-    <div className="h-full overflow-y-auto p-6 relative">
-      <div className="max-w-2xl mx-auto space-y-6 pb-20">
-        <div>
-          <h1 className="text-2xl font-bold mb-1">Settings</h1>
-          <p className="text-sm text-muted-foreground">Configure your Hermes Agent experience.</p>
-        </div>
-
-        <Tabs defaultValue="model" className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="model">Model</TabsTrigger>
-            <TabsTrigger value="backend">Backend</TabsTrigger>
-            <TabsTrigger value="agent">Agent</TabsTrigger>
-            <TabsTrigger value="tools">Tools</TabsTrigger>
-          </TabsList>
-
-          {/* Model & Provider */}
-          <TabsContent value="model" className="space-y-4 mt-4">
-            <div className="p-4 rounded-lg border border-border">
-              <h3 className="font-medium mb-3 text-sm">Provider</h3>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {Object.keys(PROVIDER_MODELS).map((p) => (
-                  <Button
-                    key={p}
-                    variant={provider === p ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setProvider(p)}
-                    className="justify-start"
-                  >
-                    {p}
-                  </Button>
-                ))}
-              </div>
+    <div className="h-full flex flex-col relative bg-background animate-in fade-in duration-300">
+      {/* Toast Notification */}
+      {showSaveToast && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-top-4 duration-300">
+          <div className="bg-primary text-primary-foreground px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 border border-primary-foreground/20">
+            <div className="w-6 h-6 rounded-full bg-primary-foreground/20 flex items-center justify-center">
+              <Check className="h-4 w-4" />
             </div>
+            <span className="font-semibold text-sm">Settings saved successfully!</span>
+          </div>
+        </div>
+      )}
 
-            <div className="p-4 rounded-lg border border-border">
-              <h3 className="font-medium mb-3 text-sm">Model</h3>
-              <Input
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-                placeholder="Enter model name"
-                className="mb-3"
-              />
-              {PROVIDER_MODELS[provider] && (
-                <div className="flex flex-wrap gap-2">
-                  {PROVIDER_MODELS[provider].map((m) => (
-                    <Badge
-                      key={m}
-                      variant={model === m ? 'default' : 'outline'}
-                      className="cursor-pointer font-medium"
-                      onClick={() => setModel(m)}
+      <div className="flex-1 overflow-y-auto p-8 pt-10 pb-24">
+        <div className="max-w-2xl mx-auto space-y-8">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight mb-2">Settings</h1>
+            <p className="text-muted-foreground">Configure AI providers, backend preferences, and agent behavior.</p>
+          </div>
+
+          <Tabs defaultValue="model" className="w-full">
+            <TabsList className="grid w-full grid-cols-4 bg-muted/50 p-1 rounded-xl border border-border/50">
+              <TabsTrigger value="model" className="rounded-lg">Model</TabsTrigger>
+              <TabsTrigger value="backend" className="rounded-lg">Backend</TabsTrigger>
+              <TabsTrigger value="agent" className="rounded-lg">Agent</TabsTrigger>
+              <TabsTrigger value="tools" className="rounded-lg">Tools</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="model" className="space-y-6 mt-8">
+              <div className="grid gap-6">
+                <div className="p-6 rounded-xl border border-border bg-card shadow-sm">
+                  <h3 className="font-semibold mb-4 text-base">AI Provider</h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {Object.keys(PROVIDER_MODELS).map((p) => (
+                      <Button
+                        key={p}
+                        variant={provider === p ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => { setProvider(p); setModel('') }}
+                        className="justify-start h-10 px-4"
+                      >
+                        {p}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="p-6 rounded-xl border border-border bg-card shadow-sm">
+                  <h3 className="font-semibold mb-4 text-base">Active Model</h3>
+                  <Input
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    placeholder="Enter model identifier"
+                    className="mb-4 h-11 bg-background"
+                  />
+                  {PROVIDER_MODELS[provider] && (
+                    <div className="flex flex-wrap gap-2">
+                      {PROVIDER_MODELS[provider].map((m) => (
+                        <button
+                          key={m}
+                          onClick={() => setModel(m)}
+                          className={cn(
+                            "px-3 py-1.5 rounded-md text-xs font-medium border transition-all",
+                            model === m 
+                              ? "bg-primary text-primary-foreground border-primary" 
+                              : "bg-muted/50 hover:bg-muted text-muted-foreground border-transparent"
+                          )}
+                        >
+                          {m}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-6 rounded-xl border border-border bg-card shadow-sm">
+                  <h3 className="font-semibold mb-4 text-base">API Credentials</h3>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Secret Key</label>
+                    <Input
+                      type="password"
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                      placeholder="sk-..."
+                      className="h-11 bg-background"
+                    />
+                    <p className="text-[11px] text-muted-foreground">Keys are stored locally in your browser/app cache.</p>
+                  </div>
+                </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="backend" className="space-y-6 mt-8">
+              <div className="p-6 rounded-xl border border-border bg-card shadow-sm">
+                <h3 className="font-semibold mb-4 text-base">Connection Strategy</h3>
+                <div className="space-y-3">
+                  {[
+                    { id: 'auto', label: 'Auto-detect', sub: 'Priority to local Hermes with direct fallback' },
+                    { id: 'external', label: 'External Backend', sub: 'Connect to a remote or managed Hermes instance' },
+                    { id: 'embedded', label: 'Direct Provider', sub: 'Bypass Hermes and talk directly to the AI service' },
+                  ].map((m) => (
+                    <label
+                      key={m.id}
+                      className={cn(
+                        'flex items-center gap-4 p-4 rounded-xl border cursor-pointer transition-all',
+                        backendMode === m.id 
+                          ? 'border-primary bg-primary/[0.03] ring-1 ring-primary/20' 
+                          : 'border-border hover:bg-muted/30'
+                      )}
                     >
-                      {m}
-                    </Badge>
+                      <div className={cn(
+                        "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors",
+                        backendMode === m.id ? "border-primary" : "border-muted-foreground/30"
+                      )}>
+                        {backendMode === m.id && <div className="w-2.5 h-2.5 rounded-full bg-primary" />}
+                      </div>
+                      <input
+                        type="radio"
+                        name="backendMode"
+                        checked={backendMode === m.id}
+                        onChange={() => setBackendMode(m.id)}
+                        className="sr-only"
+                      />
+                      <div className="flex-1">
+                        <div className="text-sm font-bold">{m.label}</div>
+                        <div className="text-xs text-muted-foreground mt-0.5">{m.sub}</div>
+                      </div>
+                    </label>
                   ))}
                 </div>
-              )}
-            </div>
-
-            <div className="p-4 rounded-lg border border-border">
-              <h3 className="font-medium mb-3 text-sm">API Key</h3>
-              <Input
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="sk-..."
-              />
-            </div>
-          </TabsContent>
-
-          {/* Backend */}
-          <TabsContent value="backend" className="space-y-4 mt-4">
-            <div className="p-4 rounded-lg border border-border">
-              <h3 className="font-medium mb-3 text-sm">Backend Mode</h3>
-              <div className="space-y-2">
-                {[
-                  { id: 'auto', label: 'Auto (Recommended)' },
-                  { id: 'external', label: 'External Backend' },
-                  { id: 'embedded', label: 'Provider Direct' },
-                ].map((m) => (
-                  <label
-                    key={m.id}
-                    className={cn(
-                      'flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors',
-                      backendMode === m.id ? 'border-primary bg-primary/5' : 'border-border hover:bg-accent/50'
-                    )}
-                  >
-                    <input
-                      type="radio"
-                      name="backendMode"
-                      checked={backendMode === m.id}
-                      onChange={() => setBackendMode(m.id)}
-                      className="w-4 h-4 text-primary"
-                    />
-                    <span className="text-sm font-medium">{m.label}</span>
-                  </label>
-                ))}
               </div>
-            </div>
 
-            {(backendMode === 'auto' || backendMode === 'external') && (
-              <div className="p-4 rounded-lg border border-border animate-in fade-in slide-in-from-top-1">
-                <h3 className="font-medium mb-3 text-sm">Backend URL</h3>
-                <div className="flex gap-2">
-                  <Input
-                    value={backendMode === 'external' ? externalUrl : 'http://localhost:42424/v1'}
-                    onChange={(e) => setExternalUrl(e.target.value)}
-                    disabled={backendMode === 'auto'}
-                    className="flex-1"
-                  />
-                  <Button variant="outline" onClick={handleTestConnection} disabled={testingConnection}>
-                    {testingConnection ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Test'}
-                  </Button>
+              {(backendMode === 'auto' || backendMode === 'external') && (
+                <div className="p-6 rounded-xl border border-border bg-card shadow-sm animate-in zoom-in-95">
+                  <h3 className="font-semibold mb-4 text-base">Backend Configuration</h3>
+                  <div className="flex gap-3">
+                    <div className="flex-1 space-y-2">
+                       <label className="text-[10px] font-bold text-muted-foreground uppercase">Endpoint URL</label>
+                       <Input
+                        value={backendMode === 'external' ? externalUrl : 'http://localhost:42424/v1'}
+                        onChange={(e) => setExternalUrl(e.target.value)}
+                        disabled={backendMode === 'auto'}
+                        className="h-11 bg-background font-mono text-sm"
+                      />
+                    </div>
+                    <div className="self-end pb-0.5">
+                      <Button 
+                        variant="outline" 
+                        onClick={handleTestConnection} 
+                        disabled={testingConnection}
+                        className="h-11 px-6 font-bold"
+                      >
+                        {testingConnection ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Ping'}
+                      </Button>
+                    </div>
+                  </div>
+                  {connectionResult && (
+                    <div className={cn(
+                      'mt-4 p-3 rounded-lg text-sm flex items-center gap-3 border', 
+                      connectionResult.success ? 'bg-green-500/10 text-green-600 border-green-500/20' : 'bg-destructive/10 text-destructive border-destructive/20'
+                    )}>
+                      {connectionResult.success ? <Check className="h-5 w-5" /> : <X className="h-5 w-5" />}
+                      <span className="font-medium">{connectionResult.message}</span>
+                    </div>
+                  )}
                 </div>
-                {connectionResult && (
-                  <div className={cn('mt-2 text-sm flex items-center gap-1.5', connectionResult.success ? 'text-green-500' : 'text-destructive')}>
-                    {connectionResult.success ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
-                    {connectionResult.message}
+              )}
+            </TabsContent>
+
+            <TabsContent value="agent" className="space-y-6 mt-8">
+              <div className="p-6 rounded-xl border border-border bg-card shadow-sm">
+                <h3 className="font-semibold mb-1 text-base">Execution Limits</h3>
+                <p className="text-xs text-muted-foreground mb-6">Control how many autonomous loops the agent can perform.</p>
+                <div className="flex items-center gap-6">
+                  <Input
+                    type="number"
+                    value={maxTurns}
+                    onChange={(e) => setMaxTurns(parseInt(e.target.value) || 90)}
+                    className="w-28 h-11 bg-background text-lg font-bold"
+                  />
+                  <div className="flex-1 space-y-2">
+                    <div className="flex justify-between text-xs font-bold">
+                      <span>Max Iterations</span>
+                      <span>Safe default: 90</span>
+                    </div>
+                    <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+                      <div className="h-full bg-primary" style={{ width: `${Math.min(100, (maxTurns / 300) * 100)}%` }} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 rounded-xl border border-border bg-card shadow-sm">
+                <h3 className="font-semibold mb-6 text-base text-center">Behavior Settings</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
+                  <div className="space-y-4">
+                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest block text-center">Reasoning Effort</label>
+                    <div className="flex bg-muted/50 p-1 rounded-lg border border-border/50">
+                      {['low', 'medium', 'high'].map((r) => (
+                        <button
+                          key={r}
+                          onClick={() => setReasoningEffort(r)}
+                          className={cn(
+                            "flex-1 py-2 text-xs font-bold rounded-md transition-all capitalize",
+                            reasoningEffort === r ? "bg-background text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          {r}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest block text-center">Logging Verbosity</label>
+                    <div className="flex bg-muted/50 p-1 rounded-lg border border-border/50">
+                      {['off', 'new', 'all', 'verbose'].map((t) => (
+                        <button
+                          key={t}
+                          onClick={() => setToolProgress(t)}
+                          className={cn(
+                            "flex-1 py-2 text-[10px] font-bold rounded-md transition-all capitalize",
+                            toolProgress === t ? "bg-background text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="tools" className="space-y-4 mt-8">
+              <div className="grid gap-3">
+                <div className="p-5 rounded-xl border border-border bg-card shadow-sm flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500">
+                      <ExternalLink className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-sm">Web Search Capabilities</div>
+                      <div className="text-xs text-muted-foreground">Browse the internet using Firecrawl</div>
+                    </div>
+                  </div>
+                  <Switch checked={webSearchEnabled} onCheckedChange={setWebSearchEnabled} />
+                </div>
+
+                {webSearchEnabled && (
+                  <div className="p-5 rounded-xl border border-primary/20 bg-primary/[0.02] shadow-sm animate-in slide-in-from-top-2">
+                    <label className="text-[10px] font-black text-muted-foreground border-b border-border mb-4 block pb-1">FIRECRAWL API KEY</label>
+                    <Input 
+                      type="password"
+                      placeholder="fc-..." 
+                      value={firecrawlApiKey}
+                      onChange={(e) => setFirecrawlApiKey(e.target.value)}
+                      className="bg-background h-11"
+                    />
                   </div>
                 )}
-              </div>
-            )}
-          </TabsContent>
 
-          {/* Agent */}
-          <TabsContent value="agent" className="space-y-4 mt-4">
-            <div className="p-4 rounded-lg border border-border">
-              <h3 className="font-medium mb-3 text-sm">Max Iterations</h3>
-              <Input
-                type="number"
-                value={maxTurns}
-                onChange={(e) => setMaxTurns(parseInt(e.target.value) || 90)}
-                className="w-32"
-              />
-              <p className="text-xs text-muted-foreground mt-2">Maximum number of tool calls the agent can make before stopping.</p>
-            </div>
-
-            <div className="p-4 rounded-lg border border-border">
-              <h3 className="font-medium mb-3 text-sm">Reasoning Effort</h3>
-              <div className="flex gap-2">
-                {['low', 'medium', 'high'].map((r) => (
-                  <Button
-                    key={r}
-                    variant={reasoningEffort === r ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setReasoningEffort(r)}
-                    className="capitalize"
-                  >
-                    {r}
-                  </Button>
-                ))}
-              </div>
-            </div>
-
-            <div className="p-4 rounded-lg border border-border">
-              <h3 className="font-medium mb-3 text-sm">Tool Progress</h3>
-              <div className="flex gap-2 flex-wrap">
-                {['off', 'new', 'all', 'verbose'].map((t) => (
-                  <Button
-                    key={t}
-                    variant={toolProgress === t ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setToolProgress(t)}
-                    className="capitalize"
-                  >
-                    {t}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          </TabsContent>
-
-          {/* Tools */}
-          <TabsContent value="tools" className="space-y-4 mt-4">
-            <div className="p-4 rounded-lg border border-border">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="font-medium text-sm">Web Search</div>
-                  <div className="text-xs text-muted-foreground">Enable web search capabilities</div>
+                <div className="p-5 rounded-xl border border-border bg-card shadow-sm flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                     <div className="w-10 h-10 rounded-lg bg-orange-500/10 flex items-center justify-center text-orange-500">
+                      <Badge className="bg-transparent text-current shadow-none p-0">
+                         <Github className="h-5 w-5" />
+                      </Badge>
+                    </div>
+                    <div>
+                      <div className="font-bold text-sm">Vision & Analysis</div>
+                      <div className="text-xs text-muted-foreground">Process and describe local images</div>
+                    </div>
+                  </div>
+                  <Switch checked={visionEnabled} onCheckedChange={setVisionEnabled} />
                 </div>
-                <Switch checked={webSearchEnabled} onCheckedChange={setWebSearchEnabled} />
-              </div>
-              {webSearchEnabled && (
-                <div className="mt-4 pt-4 border-t border-border animate-in fade-in slide-in-from-top-1">
-                  <label className="text-sm font-medium mb-2 block">Firecrawl API Key</label>
-                  <Input 
-                    type="password"
-                    placeholder="fc-..." 
-                    value={firecrawlApiKey}
-                    onChange={(e) => setFirecrawlApiKey(e.target.value)}
-                  />
+
+                <div className="p-5 rounded-xl border border-border bg-card shadow-sm flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                     <div className="w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-500">
+                      <Download className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-sm">Text-to-Speech Output</div>
+                      <div className="text-xs text-muted-foreground">Hear agent responses audibly</div>
+                    </div>
+                  </div>
+                  <Switch checked={ttsEnabled} onCheckedChange={setTtsEnabled} />
                 </div>
-              )}
-            </div>
-
-            <div className="p-4 rounded-lg border border-border flex items-center justify-between">
-              <div>
-                <div className="font-medium text-sm">Vision</div>
-                <div className="text-xs text-muted-foreground">Enable image analysis</div>
               </div>
-              <Switch checked={visionEnabled} onCheckedChange={setVisionEnabled} />
-            </div>
+            </TabsContent>
+          </Tabs>
 
-            <div className="p-4 rounded-lg border border-border flex items-center justify-between">
-              <div>
-                <div className="font-medium text-sm">Text-to-Speech</div>
-                <div className="text-xs text-muted-foreground">Enable voice responses</div>
-              </div>
-              <Switch checked={ttsEnabled} onCheckedChange={setTtsEnabled} />
-            </div>
-          </TabsContent>
-        </Tabs>
+          <Separator className="my-10" />
 
-        {/* About */}
-        <Separator />
-        <div className="p-4 rounded-lg border border-border">
-          <h3 className="font-medium mb-4 text-sm">About</h3>
-          
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <div className="font-semibold text-sm">Hermes Agent Desktop</div>
-              <div className="text-xs text-muted-foreground mt-0.5">Version 1.0.0</div>
+          <div className="p-8 rounded-2xl border border-border bg-muted/30 relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:scale-110 transition-transform">
+               <span className="text-8xl font-black">⚕</span>
             </div>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={handleCheckForUpdates} className="text-xs h-8">
-                Check for Updates
-                <ExternalLink className="h-3 w-3 ml-1.5" />
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => window.hermesDesktop?.openExternal?.('https://github.com/henryrocks7800/hermes-agent-desktop')}
-                className="gap-1.5 text-xs h-8"
-              >
-                <Github className="h-3.5 w-3.5" />
-                GitHub
-              </Button>
-            </div>
-          </div>
-          
-          <Separator className="my-4" />
-          
-          <div className="flex flex-col gap-2">
-            <Button 
-              variant="secondary" 
-              className="w-full justify-start gap-2 h-9"
-              onClick={() => setRerunWizardDialog(true)}
-            >
-              <RotateCcw className="h-4 w-4 text-muted-foreground" />
-              Rerun Setup Wizard
-            </Button>
             
-            <Button 
-              variant="secondary" 
-              className="w-full justify-start gap-2 h-9"
-              onClick={handleUpdateBackend}
-              disabled={!isDesktop}
-              title={!isDesktop ? "Only available in the desktop app" : ""}
-            >
-              <Download className="h-4 w-4 text-muted-foreground" />
-              Update Hermes Backend
-            </Button>
+            <h3 className="font-bold text-lg mb-6 flex items-center gap-3">
+               Developer Console
+               <Badge className="bg-primary/10 text-primary border-none shadow-none text-[10px]">VER 1.0.0</Badge>
+            </h3>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Button 
+                variant="outline" 
+                className="justify-start h-12 px-5 gap-3 bg-card border-border/50 hover:border-primary/50 transition-all"
+                onClick={() => window.hermesDesktop?.openExternal?.('https://github.com/henryrocks7800/hermes-agent-desktop')}
+              >
+                <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center"><Github className="h-4 w-4" /></div>
+                <div className="text-left">
+                  <div className="text-xs font-bold">Open Source</div>
+                  <div className="text-[10px] text-muted-foreground">View main repository</div>
+                </div>
+              </Button>
+
+              <Button 
+                variant="outline" 
+                className="justify-start h-12 px-5 gap-3 bg-card border-border/50 hover:border-primary/50 transition-all"
+                onClick={handleCheckForUpdates}
+              >
+                <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center"><ExternalLink className="h-4 w-4" /></div>
+                <div className="text-left">
+                   <div className="text-xs font-bold">Release Log</div>
+                   <div className="text-[10px] text-muted-foreground">Check for UI updates</div>
+                </div>
+              </Button>
+
+              <Button 
+                variant="secondary" 
+                className="justify-start h-12 px-5 gap-3 border border-border/20 shadow-sm"
+                onClick={() => setRerunWizardDialog(true)}
+              >
+                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary"><RotateCcw className="h-4 w-4" /></div>
+                <div className="text-left">
+                   <div className="text-xs font-bold">Reset Wizard</div>
+                   <div className="text-[10px] text-muted-foreground">Re-run setup guide</div>
+                </div>
+              </Button>
+
+              <Button 
+                variant="secondary" 
+                className="justify-start h-12 px-5 gap-3 border border-border/20 shadow-sm disabled:opacity-50"
+                onClick={handleUpdateBackend}
+                disabled={!isDesktop}
+              >
+                 <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                    {updating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                 </div>
+                 <div className="text-left">
+                   <div className="text-xs font-bold">Update Engine</div>
+                   <div className="text-[10px] text-muted-foreground">Sync local backend</div>
+                 </div>
+              </Button>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Fixed bottom bar for Save button */}
-      <div className="absolute bottom-0 left-0 right-0 p-4 bg-background/80 backdrop-blur-sm border-t border-border flex items-center justify-between">
-        <div className="flex-1">
-          {showSaveToast && (
-            <div className="flex items-center gap-2 text-sm text-green-500 font-medium animate-in fade-in slide-in-from-bottom-2">
-              <Check className="h-4 w-4" />
-              Settings saved
-            </div>
-          )}
+      {/* Persistent Save Bar */}
+      <div className="fixed bottom-0 right-0 left-60 bg-background/95 backdrop-blur-md border-t border-border p-5 flex items-center justify-center px-10 z-50">
+        <div className="max-w-2xl w-full flex items-center justify-between">
+           <p className="text-xs text-muted-foreground italic hidden sm:block">Settings change after saving.</p>
+           <Button 
+            onClick={handleSave} 
+            className="w-full sm:w-48 h-12 font-black tracking-widest uppercase text-xs shadow-lg hover:shadow-primary/20 transition-all border-b-4 border-primary/40 active:border-b-0 active:translate-y-1"
+          >
+            Apply Settings
+          </Button>
         </div>
-        <Button onClick={handleSave} className="w-32">
-          Save Settings
-        </Button>
       </div>
 
-      {/* Rerun Wizard Dialog */}
+      {/* Rerun Wizard Modal */}
       <Dialog open={rerunWizardDialog} onOpenChange={setRerunWizardDialog}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-md bg-card border-border shadow-2xl">
           <DialogHeader>
-            <DialogTitle>Rerun Setup Wizard</DialogTitle>
-            <DialogDescription>
-              This will rerun the setup wizard. Your current settings will be preserved as defaults. Continue?
+            <DialogTitle className="text-2xl font-black italic uppercase tracking-tighter">System Reset</DialogTitle>
+            <DialogDescription className="pt-2 text-base">
+              The setup wizard will re-run. Your current configurations will be kept as the new defaults.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="mt-4">
-            <Button variant="outline" onClick={() => setRerunWizardDialog(false)}>Cancel</Button>
-            <Button onClick={handleRerunWizard}>Continue</Button>
+          <DialogFooter className="mt-8 gap-3 sm:flex-row flex-col">
+            <Button variant="outline" onClick={() => setRerunWizardDialog(false)} className="h-12 flex-1 font-bold">Cancel</Button>
+            <Button onClick={handleRerunWizard} className="h-12 flex-1 font-bold">Initiate Reset</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Update Backend Dialog */}
+      {/* Update Log Modal */}
       <Dialog open={updateDialog} onOpenChange={(open) => !updating && setUpdateDialog(open)}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              Update Hermes Agent
-              {updating && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-            </DialogTitle>
-            <DialogDescription>
-              Pulling the latest source code and reinstalling dependencies.
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="mt-4 rounded-md bg-muted border border-border p-3">
-            <div 
-              ref={scrollRef}
-              className="h-[200px] overflow-y-auto font-mono text-xs space-y-1.5"
-            >
-              {updateLog.length === 0 && <div className="text-muted-foreground">Initializing...</div>}
-              {updateLog.map((line, i) => (
-                <div key={i} className="whitespace-pre-wrap">{line}</div>
-              ))}
-            </div>
+        <DialogContent className="sm:max-w-[600px] bg-card border-border shadow-2xl overflow-hidden p-0">
+          <div className="p-8 pb-4">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-3 text-2xl font-black uppercase italic">
+                Backend Synchronization
+                {updating && <Loader2 className="h-5 w-5 animate-spin text-primary" />}
+              </DialogTitle>
+              <DialogDescription className="pt-1">
+                Updating Hermes Engine core from GitHub and standardizing dependencies.
+              </DialogDescription>
+            </DialogHeader>
           </div>
+          
+          <div className="p-8 pt-0">
+             <div className="bg-black/90 rounded-xl border border-white/5 p-4 shadow-inner">
+              <ScrollArea className="h-[250px] pr-4">
+                <div ref={scrollRef} className="font-mono text-[11px] leading-relaxed text-blue-400/90 selection:bg-blue-500/20">
+                  {updateLog.length === 0 && <div className="text-gray-500 italic animate-pulse">Requesting update stream...</div>}
+                  {updateLog.map((line, i) => (
+                    <div key={i} className="mb-1">
+                       <span className="text-gray-600 mr-2">[{new Date().toLocaleTimeString()}]</span>
+                       {line}
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            </div>
 
-          {updateResult && (
-            <div className={cn(
-              "mt-4 p-3 rounded-md text-sm flex items-start gap-2",
-              updateResult.success ? "bg-green-500/10 text-green-600 dark:text-green-400" : "bg-destructive/10 text-destructive"
-            )}>
-              {updateResult.success ? <Check className="h-4 w-4 shrink-0 mt-0.5" /> : <X className="h-4 w-4 shrink-0 mt-0.5" />}
-              <div>
-                <div className="font-medium">{updateResult.success ? "Update Successful" : "Update Failed"}</div>
-                <div className="mt-1 opacity-90 text-xs">
-                  {updateResult.success 
-                    ? "Restart the app to use the new version." 
-                    : updateResult.message}
+            {updateResult && (
+              <div className={cn(
+                "mt-6 p-4 rounded-xl text-sm flex items-start gap-4 animate-in slide-in-from-bottom-2 duration-500",
+                updateResult.success ? "bg-green-500/10 text-green-600 dark:text-green-400" : "bg-destructive/10 text-destructive border border-destructive/20 shadow-[0_0_20px_-5px_rgba(239,68,68,0.15)]"
+              )}>
+                <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center shrink-0 border", updateResult.success ? "bg-green-500/20 border-green-500/30" : "bg-destructive/20 border-destructive/30")}>
+                   {updateResult.success ? <Check className="h-6 w-6" /> : <X className="h-6 w-6" />}
+                </div>
+                <div>
+                  <div className="font-black uppercase italic tracking-wider">{updateResult.success ? "Protocol Complete" : "Synchronization Failed"}</div>
+                  <div className="mt-1 font-medium opacity-90 leading-tight">
+                    {updateResult.success 
+                      ? "The engine has been standardized. Restart the application to engage improvements." 
+                      : updateResult.message}
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
-          <DialogFooter className="mt-2">
-            <Button onClick={() => setUpdateDialog(false)} disabled={updating}>
-              Close
+          <div className="bg-muted/50 p-6 flex justify-end gap-3 border-t border-border/50">
+            <Button 
+                onClick={() => setUpdateDialog(false)} 
+                disabled={updating}
+                className="px-10 font-black tracking-widest uppercase text-xs"
+              >
+              Disengage
             </Button>
-          </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
