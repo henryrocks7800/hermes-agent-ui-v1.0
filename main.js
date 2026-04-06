@@ -3,7 +3,7 @@ import { fileURLToPath } from 'url'
 import path from 'path'
 import fs from 'fs'
 import http from 'http'
-import { exec } from 'child_process'
+import { exec, spawn } from 'child_process'
 import { promisify } from 'util'
 
 const execAsync = promisify(exec)
@@ -12,7 +12,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 
+const HERMES_PORT = 8642
+const HERMES_API_URL = `http://localhost:${HERMES_PORT}`
+
 let mainWindow = null
+let hermesProcess = null
 
 function resolveRenderer() {
   if (isDev) return 'http://localhost:5173'
@@ -50,12 +54,97 @@ function createWindow() {
   mainWindow.on('closed', () => { mainWindow = null })
 }
 
-app.whenReady().then(() => {
+// ── Hermes Agent gateway lifecycle ─────────────────────────────────────────────
+
+function getHermesDir() {
+  // Check bundled backend first, then user's local install
+  const bundled = path.join(process.resourcesPath || __dirname, 'hermes-backend')
+  if (fs.existsSync(path.join(bundled, 'hermes'))) return bundled
+  const local = path.join(process.env.HOME || process.env.USERPROFILE, '.hermes', 'hermes-agent')
+  if (fs.existsSync(path.join(local, 'hermes'))) return local
+  return null
+}
+
+async function isHermesRunning() {
+  try {
+    const res = await fetch(`${HERMES_API_URL}/health`, { signal: AbortSignal.timeout(2000) })
+    return res.ok
+  } catch { return false }
+}
+
+async function startHermesGateway() {
+  if (await isHermesRunning()) {
+    console.log('[Hermes] Gateway already running on port', HERMES_PORT)
+    return
+  }
+
+  const hermesDir = getHermesDir()
+  if (!hermesDir) {
+    console.warn('[Hermes] No Hermes Agent installation found — running in UI-only mode')
+    return
+  }
+
+  console.log('[Hermes] Starting gateway from', hermesDir)
+
+  const logDir = path.join(process.env.HOME || process.env.USERPROFILE, '.hermes', 'logs')
+  if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true })
+  const logStream = fs.createWriteStream(path.join(logDir, 'gateway-desktop.log'), { flags: 'a' })
+
+  hermesProcess = spawn('python3', [path.join(hermesDir, 'hermes'), 'gateway', 'run', '--quiet'], {
+    cwd: hermesDir,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    detached: false,
+    env: { ...process.env, API_SERVER_PORT: String(HERMES_PORT) },
+  })
+
+  hermesProcess.stdout.pipe(logStream)
+  hermesProcess.stderr.pipe(logStream)
+
+  hermesProcess.on('error', (err) => {
+    console.error('[Hermes] Failed to start gateway:', err.message)
+    hermesProcess = null
+  })
+
+  hermesProcess.on('exit', (code) => {
+    console.log('[Hermes] Gateway exited with code', code)
+    hermesProcess = null
+  })
+
+  // Wait up to 10s for the API server to become available
+  for (let i = 0; i < 20; i++) {
+    await new Promise(r => setTimeout(r, 500))
+    if (await isHermesRunning()) {
+      console.log('[Hermes] Gateway ready on port', HERMES_PORT)
+      return
+    }
+  }
+  console.warn('[Hermes] Gateway started but health check not responding yet')
+}
+
+function stopHermesGateway() {
+  if (!hermesProcess) return
+  console.log('[Hermes] Shutting down gateway (PID', hermesProcess.pid + ')')
+  try {
+    hermesProcess.kill('SIGTERM')
+  } catch (err) {
+    console.error('[Hermes] Error stopping gateway:', err.message)
+  }
+  hermesProcess = null
+}
+
+// ── App lifecycle ─────────────────────────────────────────────────────────────
+
+app.whenReady().then(async () => {
+  await startHermesGateway()
   createWindow()
   app.on('activate', () => { if (!mainWindow) createWindow() })
 })
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
+
+app.on('before-quit', () => {
+  stopHermesGateway()
+})
 
 // ── IPC handlers ──────────────────────────────────────────────────────────────
 
@@ -111,22 +200,49 @@ ipcMain.handle('backend:health', async (_, url) => {
   }
 })
 
-ipcMain.handle('backend:update', async (event) => {
-  const hermesPath = path.join(process.env.HOME || process.env.USERPROFILE, '.hermes', 'hermes-agent')
+// Hermes gateway status
+ipcMain.handle('hermes:status', async () => {
+  const running = await isHermesRunning()
+  const installed = !!getHermesDir()
+  return { running, installed, port: HERMES_PORT, url: `${HERMES_API_URL}/v1` }
+})
 
+ipcMain.handle('hermes:restart', async () => {
+  stopHermesGateway()
+  await new Promise(r => setTimeout(r, 1000))
+  await startHermesGateway()
+  return await isHermesRunning()
+})
+
+ipcMain.handle('backend:update', async (event) => {
+  const hermesPath = getHermesDir()
   const send = (msg) => event.sender.send('backend:update-progress', msg)
 
+  if (!hermesPath) {
+    send('No Hermes Agent installation found.')
+    send('Run "npm run build:backend" to clone and install it.')
+    return { success: false, message: 'Hermes Agent not installed' }
+  }
+
   try {
-    send('Checking for updates...')
+    send(`Updating from: ${hermesPath}`)
+    send('Pulling latest from GitHub...')
 
     const { stdout: gitOut } = await execAsync('git pull origin main', { cwd: hermesPath })
     send(gitOut.trim() || 'Git pull complete')
 
-    send('Installing latest version...')
+    send('Reinstalling dependencies...')
     await execAsync('pip install -e . --quiet', { cwd: hermesPath })
     send('Install complete')
 
-    return { success: true, message: 'Hermes Agent updated successfully' }
+    send('Restarting gateway...')
+    stopHermesGateway()
+    await new Promise(r => setTimeout(r, 1000))
+    await startHermesGateway()
+    const running = await isHermesRunning()
+    send(running ? 'Gateway restarted successfully' : 'Gateway started (health check pending)')
+
+    return { success: true, message: 'Hermes Agent updated and restarted' }
   } catch (err) {
     return { success: false, message: err.message }
   }

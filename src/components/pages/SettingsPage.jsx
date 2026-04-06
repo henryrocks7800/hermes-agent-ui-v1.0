@@ -23,9 +23,9 @@ export default function SettingsPage({ onSave }) {
   const [provider, setProvider] = useState(() => storage.get(KEYS.PROVIDER, '') || 'openai')
   const [model, setModel] = useState(() => storage.get(KEYS.MODEL, ''))
   const [apiKey, setApiKey] = useState(() => storage.get(KEYS.API_KEY, ''))
-  const [baseUrl, setBaseUrl] = useState(() => storage.get(KEYS.BASE_URL, 'http://localhost:42424/v1'))
+  const [baseUrl, setBaseUrl] = useState(() => storage.get(KEYS.BASE_URL, 'http://localhost:8642/v1'))
   const [backendMode, setBackendMode] = useState(() => storage.get(KEYS.BACKEND_MODE, 'auto'))
-  const [externalUrl, setExternalUrl] = useState(() => storage.get(KEYS.EXTERNAL_URL, 'http://localhost:42424/v1'))
+  const [externalUrl, setExternalUrl] = useState(() => storage.get(KEYS.EXTERNAL_URL, 'http://localhost:8642/v1'))
   const [maxTurns, setMaxTurns] = useState(() => storage.get(KEYS.MAX_TURNS, 90))
   const [reasoningEffort, setReasoningEffort] = useState(() => storage.get(KEYS.REASONING, 'medium'))
   const [toolProgress, setToolProgress] = useState(() => storage.get(KEYS.TOOL_PROGRESS, 'all'))
@@ -97,7 +97,7 @@ export default function SettingsPage({ onSave }) {
   }
 
   const handleTestConnection = async () => {
-    const url = backendMode === 'external' ? externalUrl : 'http://localhost:42424/v1'
+    const url = backendMode === 'external' ? externalUrl : 'http://localhost:8642/v1'
     setTestingConnection(true)
     setConnectionResult(null)
 
@@ -351,7 +351,7 @@ export default function SettingsPage({ onSave }) {
                     <div className="flex-1 space-y-2">
                        <label className="text-[10px] font-bold text-muted-foreground uppercase">Endpoint URL</label>
                        <Input
-                        value={backendMode === 'external' ? externalUrl : 'http://localhost:42424/v1'}
+                        value={backendMode === 'external' ? externalUrl : 'http://localhost:8642/v1'}
                         onChange={(e) => setExternalUrl(e.target.value)}
                         disabled={backendMode === 'auto'}
                         className="h-11 bg-background font-mono text-sm"

@@ -15,7 +15,7 @@ export default function OnboardingWizard({ onComplete }) {
     baseUrl: '',
     model: '',
     backendMode: 'auto',
-    externalUrl: 'http://localhost:42424/v1',
+    externalUrl: 'http://localhost:8642/v1',
     maxTurns: 90,
     reasoningEffort: 'medium',
     toolProgress: 'all',
@@ -34,7 +34,7 @@ export default function OnboardingWizard({ onComplete }) {
     storage.set(KEYS.PROVIDER, settings.provider)
     storage.set(KEYS.MODEL, settings.model)
     storage.set(KEYS.API_KEY, settings.apiKey)
-    storage.set(KEYS.BASE_URL, settings.baseUrl || 'http://localhost:42424/v1')
+    storage.set(KEYS.BASE_URL, settings.baseUrl || 'http://localhost:8642/v1')
     storage.set(KEYS.BACKEND_MODE, settings.backendMode)
     storage.set(KEYS.EXTERNAL_URL, settings.externalUrl)
     storage.set(KEYS.MAX_TURNS, settings.maxTurns)

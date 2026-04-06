@@ -38,7 +38,7 @@ export default function MainLayout() {
   const effectiveSettings = useMemo(() => {
     const { mode, provider, customBase, extUrl, model, apiKey } = sessionParams
     
-    let url = 'http://localhost:42424/v1' // Default local Hermes
+    let url = 'http://localhost:8642/v1' // Default local Hermes
     
     // Logic: If user specifically wants Direct Provider, we MUST use the SaaS URL
     if (mode === 'embedded') {
@@ -50,7 +50,7 @@ export default function MainLayout() {
     }
     // Logic: Auto mode - tries local first
     else {
-      url = 'http://localhost:42424/v1'
+      url = 'http://localhost:8642/v1'
     }
 
     return { baseUrl: url, model, apiKey, provider, mode }

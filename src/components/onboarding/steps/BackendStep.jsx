@@ -16,7 +16,7 @@ export default function BackendStep({ settings, updateSettings, onNext, onBack }
   const [connectionResult, setConnectionResult] = useState(null)
 
   const handleTestConnection = async () => {
-    const url = settings.backendMode === 'external' ? settings.externalUrl : 'http://localhost:42424/v1'
+    const url = settings.backendMode === 'external' ? settings.externalUrl : 'http://localhost:8642/v1'
     setTestingConnection(true)
     setConnectionResult(null)
 
@@ -76,8 +76,8 @@ export default function BackendStep({ settings, updateSettings, onNext, onBack }
           <label className="text-sm font-medium mb-2 block">Backend URL</label>
           <div className="flex gap-2">
             <Input
-              placeholder="http://localhost:42424/v1"
-              value={settings.backendMode === 'external' ? settings.externalUrl : 'http://localhost:42424/v1'}
+              placeholder="http://localhost:8642/v1"
+              value={settings.backendMode === 'external' ? settings.externalUrl : 'http://localhost:8642/v1'}
               onChange={(e) => updateSettings({ externalUrl: e.target.value })}
               disabled={settings.backendMode === 'auto'}
               className="flex-1"
