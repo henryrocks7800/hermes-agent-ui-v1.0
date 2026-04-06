@@ -3,12 +3,13 @@ import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { getCommandCompletions, getContextCompletions, PROVIDER_MODELS } from '@/lib/commands'
 import { storage, KEYS } from '@/lib/storage'
 import { Send, ChevronDown, Paperclip, Command, AtSign } from 'lucide-react'
 
-export default function Composer({ onSendMessage, disabled, model, provider }) {
+export default function Composer({ onSendMessage, disabled, model, onModelChange, provider }) {
   const [value, setValue] = useState('')
   const [showCommandMenu, setShowCommandMenu] = useState(false)
   const [showContextMenu, setShowContextMenu] = useState(false)
@@ -18,9 +19,12 @@ export default function Composer({ onSendMessage, disabled, model, provider }) {
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 })
   const textareaRef = useRef(null)
   const menuRef = useRef(null)
+  const fileInputRef = useRef(null)
 
   const commandSuggestions = showCommandMenu ? getCommandCompletions('/' + commandFilter) : []
   const contextSuggestions = showContextMenu ? getContextCompletions(contextFilter) : []
+  
+  const providerModels = PROVIDER_MODELS[provider] || PROVIDER_MODELS['openai']
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -139,6 +143,30 @@ export default function Composer({ onSendMessage, disabled, model, provider }) {
     }, 0)
   }
 
+  const handleAttachClick = async () => {
+    // If in Electron, use the native dialog
+    if (window.hermesDesktop && window.hermesDesktop.openFile) {
+      const filePath = await window.hermesDesktop.openFile()
+      if (filePath) {
+        setValue(prev => prev + (prev.endsWith(' ') || prev.length === 0 ? '' : ' ') + `@file:${filePath} `)
+      }
+    } else {
+      // Web fallback
+      fileInputRef.current?.click()
+    }
+  }
+
+  const handleFileSelect = (e) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      // In electron browser environment, files have a .path property
+      const filePath = file.path || file.name
+      setValue(prev => prev + (prev.endsWith(' ') || prev.length === 0 ? '' : ' ') + `@file:${filePath} `)
+    }
+    // Reset input
+    e.target.value = ''
+  }
+
   const handleSubmit = () => {
     if (value.trim() && !disabled) {
       onSendMessage(value)
@@ -146,9 +174,11 @@ export default function Composer({ onSendMessage, disabled, model, provider }) {
     }
   }
 
-  const handleModelClick = () => {
-    // Could open a popover to change model
-    console.log('Change model clicked')
+  const handleModelChange = (newModel) => {
+    storage.set(KEYS.MODEL, newModel)
+    if (onModelChange) {
+      onModelChange(newModel)
+    }
   }
 
   return (
@@ -165,12 +195,21 @@ export default function Composer({ onSendMessage, disabled, model, provider }) {
             className="min-h-[80px] max-h-[200px] resize-none pr-12"
             disabled={disabled}
           />
+          
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            className="hidden" 
+            onChange={handleFileSelect} 
+            data-testid="file-upload-input"
+          />
+
           <div className="absolute bottom-2 right-2 flex items-center gap-1">
             <Button
               size="icon"
               variant="ghost"
               className="h-8 w-8"
-              onClick={() => {}}
+              onClick={handleAttachClick}
               title="Add context"
             >
               <Paperclip className="h-4 w-4" />
@@ -247,15 +286,16 @@ export default function Composer({ onSendMessage, disabled, model, provider }) {
         {/* Bottom bar */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 text-xs"
-              onClick={handleModelClick}
-            >
-              {model}
-              <ChevronDown className="h-3 w-3 ml-1" />
-            </Button>
+            <Select value={model} onValueChange={handleModelChange}>
+              <SelectTrigger className="h-7 text-xs border-input shadow-sm w-[160px] bg-background">
+                <SelectValue placeholder="Select model" />
+              </SelectTrigger>
+              <SelectContent>
+                {providerModels.map(m => (
+                  <SelectItem key={m} value={m}>{m}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <Button
             size="sm"

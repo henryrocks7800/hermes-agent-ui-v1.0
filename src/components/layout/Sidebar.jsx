@@ -3,7 +3,9 @@ import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip'
-import { MessageSquare, BookOpen, Zap, Settings, Plus, ChevronDown } from 'lucide-react'
+import { MessageSquare, BookOpen, Zap, Settings, Plus, Sun, Moon } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { storage } from '@/lib/storage'
 
 const navItems = [
   { id: 'chat', label: 'Chat', icon: MessageSquare },
@@ -13,6 +15,19 @@ const navItems = [
 ]
 
 export default function Sidebar({ activePage, onNavigate, threads, activeThreadId, onSelectThread, onNewThread, connectionStatus }) {
+  const [theme, setTheme] = useState(() => storage.get('theme', 'dark'))
+
+  const toggleTheme = () => {
+    const newTheme = theme === 'dark' ? 'light' : 'dark'
+    setTheme(newTheme)
+    storage.set('theme', newTheme)
+    if (newTheme === 'dark') {
+      document.documentElement.classList.add('dark')
+    } else {
+      document.documentElement.classList.remove('dark')
+    }
+  }
+
   const connectionConfig = {
     connected: { color: 'bg-green-500', text: 'Connected', pulse: false },
     connecting: { color: 'bg-yellow-500', text: 'Connecting…', pulse: true },
@@ -24,7 +39,7 @@ export default function Sidebar({ activePage, onNavigate, threads, activeThreadI
     <TooltipProvider>
       <div className="w-60 flex flex-col bg-card border-r border-border h-full">
         {/* Logo */}
-        <div className="p-4">
+        <div className="p-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
               <span className="text-primary-foreground font-bold text-sm">⚕</span>
@@ -121,12 +136,16 @@ export default function Sidebar({ activePage, onNavigate, threads, activeThreadI
           </button>
         </div>
 
-        {/* Connection Status */}
-        <div className="p-3 border-t border-border">
+        {/* Connection Status and Theme Toggle */}
+        <div className="p-3 border-t border-border flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className={cn('w-2 h-2 rounded-full', config.color, config.pulse && 'animate-pulse')} />
             <span className="text-xs text-muted-foreground">{config.text}</span>
           </div>
+          
+          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={toggleTheme}>
+            {theme === 'dark' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+          </Button>
         </div>
       </div>
     </TooltipProvider>

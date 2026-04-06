@@ -16,8 +16,8 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
   const scrollRef = useRef(null)
   const scrollAreaRef = useRef(null)
 
-  const provider = storage.get(KEYS.PROVIDER, 'openai')
-  const model = storage.get(KEYS.MODEL, 'gpt-4o')
+  const [provider, setProvider] = useState(() => storage.get(KEYS.PROVIDER, 'openai'))
+  const [model, setModel] = useState(() => storage.get(KEYS.MODEL, 'gpt-4o'))
   const baseUrl = storage.get(KEYS.BASE_URL, 'http://localhost:42424/v1')
   const apiKey = storage.get(KEYS.API_KEY, '')
   const reasoningEffort = storage.get(KEYS.REASONING, 'medium')
@@ -215,7 +215,7 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
       <Composer
         onSendMessage={handleSendMessage}
         disabled={isStreaming}
-        model={model}
+        model={model} onModelChange={(m) => { storage.set(KEYS.MODEL, m); setModel(m) }}
         provider={provider}
       />
     </div>
