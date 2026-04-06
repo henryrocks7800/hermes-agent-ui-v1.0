@@ -17,13 +17,21 @@ Even if you aren't a terminal wizard, you can now chat with Hermes, attach files
 ## Free and Open Source
 This project is **100% Free and Open Source** under the MIT License. You are completely free to use it, modify it, share it, and build upon it. We believe powerful AI tools should be accessible to everyone without mandatory subscriptions or walled gardens.
 
+## ⚠️ Alpha Status
+**This project is currently in Alpha.** It is functional and usable, but we're actively discovering and fixing bugs, improving stability, and refining the user experience. Your feedback and contributions are critical to making this production-ready!
+
 ## 🤝 We Need Your Help to Grow!
 We want this to be the best open-source desktop AI assistant available, and we welcome contributions from developers of all skill levels! 
 
-Here are the top things we are looking for the community to help build next:
-1. **🍏 A macOS Version:** Bring the Hermes UI to Apple Silicon! Electron supports cross-platform builds, so we need Mac users to help test, adjust packaging, and publish `.dmg` files.
-2. **🐧 A Linux Native Version:** Help us package this for Ubuntu/Debian (`.deb`, AppImage, or Flatpak) so Linux users get a first-class desktop app.
-3. **🎙️ Voice Chat Feature:** We would love to add speech-to-text (STT) and text-to-speech (TTS) so you can literally just *talk* to your AI assistant hands-free.
+**TOP PRIORITY (Alpha Stabilization):**
+1. **🧪 Testing & Bug Fixing:** The #1 priority right now is testing the Windows app thoroughly and fixing bugs. Try different AI providers, test edge cases, file issues for crashes or unexpected behavior. Check the [QA Test Suite](e2e/tests/qa-settings.spec.js) for what's already been validated.
+2. **📋 Issue Triage:** Help us organize, reproduce, and prioritize reported bugs and feature requests.
+3. **📝 Documentation:** Help improve setup guides, troubleshooting docs, and user-facing documentation based on what confuses new users.
+
+**Future Enhancements (After Alpha):**
+1. **🍏 macOS Version:** Once Windows is stable, help port to Apple Silicon! Electron supports cross-platform builds.
+2. **🐧 Linux Native Version:** Package for Ubuntu/Debian (`.deb`, AppImage, or Flatpak).
+3. **🎙️ Voice Chat Feature:** Add speech-to-text (STT) and text-to-speech (TTS) for hands-free interaction.
 
 ### How to Contribute
 1. Fork the repository on GitHub.
