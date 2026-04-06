@@ -223,9 +223,9 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
                 <div className="absolute inset-0 bg-primary/5 rounded-3xl blur-xl group-hover:bg-primary/10 transition-colors" />
                 <span className="font-black text-3xl z-10">⚕</span>
               </div>
-              <h2 className="text-2xl font-black italic uppercase tracking-tighter mb-2 underline decoration-primary/20 underline-offset-8">Engine Interface</h2>
+              <h2 className="text-2xl font-black italic uppercase tracking-tighter mb-2 underline decoration-primary/20 underline-offset-8">Hermes Agent</h2>
               <p className="text-muted-foreground mb-10 max-w-sm text-xs font-medium leading-relaxed uppercase tracking-widest opacity-60">
-                 System initialized. Cognition protocols standby.
+                 Autonomous workflows. Infinite possibilities.
               </p>
               <div className="flex flex-wrap justify-center gap-3">
                 {['/help', '/model', '/skills'].map(cmd => (
