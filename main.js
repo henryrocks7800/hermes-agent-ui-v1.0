@@ -65,6 +65,19 @@ function getHermesDir() {
   return null
 }
 
+function findPython() {
+  // On Windows, python3 usually doesn't exist — try python and py first
+  if (process.platform === 'win32') {
+    for (const cmd of ['python', 'py', 'python3']) {
+      try {
+        const { status } = require('child_process').spawnSync(cmd, ['--version'], { stdio: 'ignore' })
+        if (status === 0) return cmd
+      } catch { /* not found, try next */ }
+    }
+  }
+  return 'python3'
+}
+
 async function isHermesRunning() {
   try {
     const res = await fetch(`${HERMES_API_URL}/health`, { signal: AbortSignal.timeout(2000) })
@@ -90,7 +103,10 @@ async function startHermesGateway() {
   if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true })
   const logStream = fs.createWriteStream(path.join(logDir, 'gateway-desktop.log'), { flags: 'a' })
 
-  hermesProcess = spawn('python3', [path.join(hermesDir, 'hermes'), 'gateway', 'run', '--quiet'], {
+  const python = findPython()
+  console.log('[Hermes] Using Python:', python)
+
+  hermesProcess = spawn(python, [path.join(hermesDir, 'hermes'), 'gateway', 'run', '--quiet'], {
     cwd: hermesDir,
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: false,
@@ -232,7 +248,8 @@ ipcMain.handle('backend:update', async (event) => {
     send(gitOut.trim() || 'Git pull complete')
 
     send('Reinstalling dependencies...')
-    await execAsync('pip install -e . --quiet', { cwd: hermesPath })
+    const pipCmd = process.platform === 'win32' ? 'pip' : 'pip3'
+    await execAsync(`${pipCmd} install -e . --quiet`, { cwd: hermesPath })
     send('Install complete')
 
     send('Restarting gateway...')
