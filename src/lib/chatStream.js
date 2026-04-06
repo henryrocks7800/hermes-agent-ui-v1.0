@@ -36,7 +36,14 @@ export async function streamChat({ baseUrl, model, messages, apiKey, signal, onT
 
   if (!response.ok) {
     const text = await response.text().catch(() => '')
-    onError?.(new Error(`HTTP ${response.status}: ${text}`))
+    let errorMessage = text
+    try {
+      const json = JSON.parse(text)
+      if (json.error?.message) {
+        errorMessage = json.error.message
+      }
+    } catch { }
+    onError?.(new Error(`HTTP ${response.status}: ${errorMessage}`))
     return
   }
 

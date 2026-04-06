@@ -19,22 +19,22 @@ import ToolsStep from './steps/ToolsStep.jsx'
 
 export default function OnboardingWizard({ onComplete }) {
   const [step, setStep] = useState(0)
-  const [settings, setSettings] = useState({
-    provider: '',
-    apiKey: '',
-    baseUrl: '',
-    model: '',
-    backendMode: 'auto',
-    externalUrl: 'http://localhost:42424/v1',
-    maxTurns: 90,
-    reasoningEffort: 'medium',
-    toolProgress: 'all',
-    webSearchEnabled: false,
-    firecrawlApiKey: '',
-    visionEnabled: false,
-    ttsEnabled: false,
-    ttsProvider: 'edge',
-  })
+  const [settings, setSettings] = useState(() => ({
+    provider: storage.get(KEYS.PROVIDER, ''),
+    apiKey: storage.get(KEYS.API_KEY, ''),
+    baseUrl: storage.get(KEYS.BASE_URL, ''),
+    model: storage.get(KEYS.MODEL, ''),
+    backendMode: storage.get(KEYS.BACKEND_MODE, 'auto'),
+    externalUrl: storage.get(KEYS.EXTERNAL_URL, 'http://localhost:42424/v1'),
+    maxTurns: storage.get(KEYS.MAX_TURNS, 90),
+    reasoningEffort: storage.get(KEYS.REASONING, 'medium'),
+    toolProgress: storage.get(KEYS.TOOL_PROGRESS, 'all'),
+    webSearchEnabled: storage.get('webSearchEnabled', false),
+    firecrawlApiKey: storage.get('firecrawlApiKey', ''),
+    visionEnabled: storage.get('visionEnabled', false),
+    ttsEnabled: storage.get('ttsEnabled', false),
+    ttsProvider: storage.get('ttsProvider', 'edge'),
+  }))
 
   const updateSettings = (updates) => {
     setSettings(prev => ({ ...prev, ...updates }))

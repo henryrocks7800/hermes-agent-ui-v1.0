@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { storage, KEYS } from '@/lib/storage'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -6,8 +6,10 @@ import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { PROVIDER_MODELS } from '@/lib/commands'
-import { ArrowLeft, ArrowRight, Check, X, Loader2, ExternalLink, Github } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, X, Loader2, ExternalLink, Github, RotateCcw, Download } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export default function SettingsPage({ onSave }) {
@@ -21,11 +23,28 @@ export default function SettingsPage({ onSave }) {
   const [reasoningEffort, setReasoningEffort] = useState(storage.get(KEYS.REASONING, 'medium'))
   const [toolProgress, setToolProgress] = useState(storage.get(KEYS.TOOL_PROGRESS, 'all'))
   const [webSearchEnabled, setWebSearchEnabled] = useState(storage.get('webSearchEnabled', false))
+  const [firecrawlApiKey, setFirecrawlApiKey] = useState(storage.get('firecrawlApiKey', ''))
   const [visionEnabled, setVisionEnabled] = useState(storage.get('visionEnabled', false))
   const [ttsEnabled, setTtsEnabled] = useState(storage.get('ttsEnabled', false))
   const [ttsProvider, setTtsProvider] = useState(storage.get('ttsProvider', 'edge'))
   const [testingConnection, setTestingConnection] = useState(false)
   const [connectionResult, setConnectionResult] = useState(null)
+  
+  const [showSaveToast, setShowSaveToast] = useState(false)
+  const [rerunWizardDialog, setRerunWizardDialog] = useState(false)
+  
+  // Updater state
+  const [updateDialog, setUpdateDialog] = useState(false)
+  const [updating, setUpdating] = useState(false)
+  const [updateLog, setUpdateLog] = useState([])
+  const [updateResult, setUpdateResult] = useState(null)
+  const scrollRef = useRef(null)
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
+  }, [updateLog])
 
   const handleSave = () => {
     onSave({
@@ -39,10 +58,14 @@ export default function SettingsPage({ onSave }) {
       [KEYS.REASONING]: reasoningEffort,
       [KEYS.TOOL_PROGRESS]: toolProgress,
       webSearchEnabled,
+      firecrawlApiKey,
       visionEnabled,
       ttsEnabled,
       ttsProvider,
     })
+    
+    setShowSaveToast(true)
+    setTimeout(() => setShowSaveToast(false), 3000)
   }
 
   const handleTestConnection = async () => {
@@ -51,14 +74,21 @@ export default function SettingsPage({ onSave }) {
     setConnectionResult(null)
 
     try {
-      const response = await fetch(`${url.replace(/\/$/, '')}/health`, {
-        method: 'GET',
-        signal: AbortSignal.timeout(2000),
-      })
-      if (response.ok) {
+      let ok = false
+      if (window.hermesDesktop?.checkBackendHealth) {
+        ok = await window.hermesDesktop.checkBackendHealth(url)
+      } else {
+        const response = await fetch(`${url.replace(/\/$/, '')}/models`, {
+          method: 'GET',
+          signal: AbortSignal.timeout(2000),
+        })
+        ok = response.ok
+      }
+      
+      if (ok) {
         setConnectionResult({ success: true, message: 'Connection successful!' })
       } else {
-        setConnectionResult({ success: false, message: `HTTP ${response.status}` })
+        setConnectionResult({ success: false, message: `Connection failed` })
       }
     } catch (err) {
       setConnectionResult({ success: false, message: err.message || 'Connection failed' })
@@ -73,12 +103,41 @@ export default function SettingsPage({ onSave }) {
     }
   }
 
+  const handleRerunWizard = () => {
+    storage.remove(KEYS.ONBOARDING_DONE)
+    window.location.reload()
+  }
+
+  const handleUpdateBackend = async () => {
+    setUpdateDialog(true)
+    setUpdating(true)
+    setUpdateLog([])
+    setUpdateResult(null)
+
+    if (window.hermesDesktop?.onUpdateProgress) {
+      window.hermesDesktop.onUpdateProgress((msg) => {
+        setUpdateLog(prev => [...prev, msg])
+      })
+    }
+
+    try {
+      const result = await window.hermesDesktop?.updateBackend()
+      setUpdateResult(result || { success: false, message: 'Update mechanism not available.' })
+    } catch (err) {
+      setUpdateResult({ success: false, message: err.message })
+    } finally {
+      setUpdating(false)
+    }
+  }
+
+  const isDesktop = window.hermesDesktop?.isDesktop
+
   return (
-    <div className="h-full overflow-y-auto p-6">
-      <div className="max-w-2xl mx-auto space-y-6">
+    <div className="h-full overflow-y-auto p-6 relative">
+      <div className="max-w-2xl mx-auto space-y-6 pb-20">
         <div>
           <h1 className="text-2xl font-bold mb-1">Settings</h1>
-          <p className="text-muted-foreground">Configure your Hermes Agent experience.</p>
+          <p className="text-sm text-muted-foreground">Configure your Hermes Agent experience.</p>
         </div>
 
         <Tabs defaultValue="model" className="w-full">
@@ -92,8 +151,8 @@ export default function SettingsPage({ onSave }) {
           {/* Model & Provider */}
           <TabsContent value="model" className="space-y-4 mt-4">
             <div className="p-4 rounded-lg border border-border">
-              <h3 className="font-medium mb-3">Provider</h3>
-              <div className="grid grid-cols-3 gap-2">
+              <h3 className="font-medium mb-3 text-sm">Provider</h3>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {Object.keys(PROVIDER_MODELS).map((p) => (
                   <Button
                     key={p}
@@ -109,7 +168,7 @@ export default function SettingsPage({ onSave }) {
             </div>
 
             <div className="p-4 rounded-lg border border-border">
-              <h3 className="font-medium mb-3">Model</h3>
+              <h3 className="font-medium mb-3 text-sm">Model</h3>
               <Input
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
@@ -122,7 +181,7 @@ export default function SettingsPage({ onSave }) {
                     <Badge
                       key={m}
                       variant={model === m ? 'default' : 'outline'}
-                      className="cursor-pointer"
+                      className="cursor-pointer font-medium"
                       onClick={() => setModel(m)}
                     >
                       {m}
@@ -133,7 +192,7 @@ export default function SettingsPage({ onSave }) {
             </div>
 
             <div className="p-4 rounded-lg border border-border">
-              <h3 className="font-medium mb-3">API Key</h3>
+              <h3 className="font-medium mb-3 text-sm">API Key</h3>
               <Input
                 type="password"
                 value={apiKey}
@@ -146,7 +205,7 @@ export default function SettingsPage({ onSave }) {
           {/* Backend */}
           <TabsContent value="backend" className="space-y-4 mt-4">
             <div className="p-4 rounded-lg border border-border">
-              <h3 className="font-medium mb-3">Backend Mode</h3>
+              <h3 className="font-medium mb-3 text-sm">Backend Mode</h3>
               <div className="space-y-2">
                 {[
                   { id: 'auto', label: 'Auto (Recommended)' },
@@ -156,8 +215,8 @@ export default function SettingsPage({ onSave }) {
                   <label
                     key={m.id}
                     className={cn(
-                      'flex items-center gap-3 p-3 rounded-md border cursor-pointer',
-                      backendMode === m.id ? 'border-primary bg-primary/5' : 'border-border'
+                      'flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors',
+                      backendMode === m.id ? 'border-primary bg-primary/5' : 'border-border hover:bg-accent/50'
                     )}
                   >
                     <input
@@ -165,17 +224,17 @@ export default function SettingsPage({ onSave }) {
                       name="backendMode"
                       checked={backendMode === m.id}
                       onChange={() => setBackendMode(m.id)}
-                      className="sr-only"
+                      className="w-4 h-4 text-primary"
                     />
-                    <span>{m.label}</span>
+                    <span className="text-sm font-medium">{m.label}</span>
                   </label>
                 ))}
               </div>
             </div>
 
             {(backendMode === 'auto' || backendMode === 'external') && (
-              <div className="p-4 rounded-lg border border-border">
-                <h3 className="font-medium mb-3">Backend URL</h3>
+              <div className="p-4 rounded-lg border border-border animate-in fade-in slide-in-from-top-1">
+                <h3 className="font-medium mb-3 text-sm">Backend URL</h3>
                 <div className="flex gap-2">
                   <Input
                     value={backendMode === 'external' ? externalUrl : 'http://localhost:42424/v1'}
@@ -188,7 +247,8 @@ export default function SettingsPage({ onSave }) {
                   </Button>
                 </div>
                 {connectionResult && (
-                  <div className={cn('mt-2 text-sm', connectionResult.success ? 'text-green-500' : 'text-red-500')}>
+                  <div className={cn('mt-2 text-sm flex items-center gap-1.5', connectionResult.success ? 'text-green-500' : 'text-destructive')}>
+                    {connectionResult.success ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
                     {connectionResult.message}
                   </div>
                 )}
@@ -199,17 +259,18 @@ export default function SettingsPage({ onSave }) {
           {/* Agent */}
           <TabsContent value="agent" className="space-y-4 mt-4">
             <div className="p-4 rounded-lg border border-border">
-              <h3 className="font-medium mb-3">Max Iterations</h3>
+              <h3 className="font-medium mb-3 text-sm">Max Iterations</h3>
               <Input
                 type="number"
                 value={maxTurns}
                 onChange={(e) => setMaxTurns(parseInt(e.target.value) || 90)}
                 className="w-32"
               />
+              <p className="text-xs text-muted-foreground mt-2">Maximum number of tool calls the agent can make before stopping.</p>
             </div>
 
             <div className="p-4 rounded-lg border border-border">
-              <h3 className="font-medium mb-3">Reasoning Effort</h3>
+              <h3 className="font-medium mb-3 text-sm">Reasoning Effort</h3>
               <div className="flex gap-2">
                 {['low', 'medium', 'high'].map((r) => (
                   <Button
@@ -217,6 +278,7 @@ export default function SettingsPage({ onSave }) {
                     variant={reasoningEffort === r ? 'default' : 'outline'}
                     size="sm"
                     onClick={() => setReasoningEffort(r)}
+                    className="capitalize"
                   >
                     {r}
                   </Button>
@@ -225,7 +287,7 @@ export default function SettingsPage({ onSave }) {
             </div>
 
             <div className="p-4 rounded-lg border border-border">
-              <h3 className="font-medium mb-3">Tool Progress</h3>
+              <h3 className="font-medium mb-3 text-sm">Tool Progress</h3>
               <div className="flex gap-2 flex-wrap">
                 {['off', 'new', 'all', 'verbose'].map((t) => (
                   <Button
@@ -233,6 +295,7 @@ export default function SettingsPage({ onSave }) {
                     variant={toolProgress === t ? 'default' : 'outline'}
                     size="sm"
                     onClick={() => setToolProgress(t)}
+                    className="capitalize"
                   >
                     {t}
                   </Button>
@@ -243,26 +306,39 @@ export default function SettingsPage({ onSave }) {
 
           {/* Tools */}
           <TabsContent value="tools" className="space-y-4 mt-4">
-            <div className="p-4 rounded-lg border border-border flex items-center justify-between">
-              <div>
-                <div className="font-medium">Web Search</div>
-                <div className="text-sm text-muted-foreground">Enable web search capabilities</div>
+            <div className="p-4 rounded-lg border border-border">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-medium text-sm">Web Search</div>
+                  <div className="text-xs text-muted-foreground">Enable web search capabilities</div>
+                </div>
+                <Switch checked={webSearchEnabled} onCheckedChange={setWebSearchEnabled} />
               </div>
-              <Switch checked={webSearchEnabled} onCheckedChange={setWebSearchEnabled} />
+              {webSearchEnabled && (
+                <div className="mt-4 pt-4 border-t border-border animate-in fade-in slide-in-from-top-1">
+                  <label className="text-sm font-medium mb-2 block">Firecrawl API Key</label>
+                  <Input 
+                    type="password"
+                    placeholder="fc-..." 
+                    value={firecrawlApiKey}
+                    onChange={(e) => setFirecrawlApiKey(e.target.value)}
+                  />
+                </div>
+              )}
             </div>
 
             <div className="p-4 rounded-lg border border-border flex items-center justify-between">
               <div>
-                <div className="font-medium">Vision</div>
-                <div className="text-sm text-muted-foreground">Enable image analysis</div>
+                <div className="font-medium text-sm">Vision</div>
+                <div className="text-xs text-muted-foreground">Enable image analysis</div>
               </div>
               <Switch checked={visionEnabled} onCheckedChange={setVisionEnabled} />
             </div>
 
             <div className="p-4 rounded-lg border border-border flex items-center justify-between">
               <div>
-                <div className="font-medium">Text-to-Speech</div>
-                <div className="text-sm text-muted-foreground">Enable voice responses</div>
+                <div className="font-medium text-sm">Text-to-Speech</div>
+                <div className="text-xs text-muted-foreground">Enable voice responses</div>
               </div>
               <Switch checked={ttsEnabled} onCheckedChange={setTtsEnabled} />
             </div>
@@ -272,32 +348,136 @@ export default function SettingsPage({ onSave }) {
         {/* About */}
         <Separator />
         <div className="p-4 rounded-lg border border-border">
-          <h3 className="font-medium mb-3">About</h3>
-          <div className="flex items-center justify-between mb-3">
+          <h3 className="font-medium mb-4 text-sm">About</h3>
+          
+          <div className="flex items-center justify-between mb-4">
             <div>
-              <div className="text-sm">Hermes Agent Desktop</div>
-              <div className="text-xs text-muted-foreground">Version 1.0.0</div>
+              <div className="font-semibold text-sm">Hermes Agent Desktop</div>
+              <div className="text-xs text-muted-foreground mt-0.5">Version 1.0.0</div>
             </div>
-            <Button variant="outline" size="sm" onClick={handleCheckForUpdates}>
-              Check for Updates
-              <ExternalLink className="h-3 w-3 ml-2" />
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={handleCheckForUpdates} className="text-xs h-8">
+                Check for Updates
+                <ExternalLink className="h-3 w-3 ml-1.5" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.hermesDesktop?.openExternal?.('https://github.com/henryrocks7800/hermes-agent-desktop')}
+                className="gap-1.5 text-xs h-8"
+              >
+                <Github className="h-3.5 w-3.5" />
+                GitHub
+              </Button>
+            </div>
+          </div>
+          
+          <Separator className="my-4" />
+          
+          <div className="flex flex-col gap-2">
+            <Button 
+              variant="secondary" 
+              className="w-full justify-start gap-2 h-9"
+              onClick={() => setRerunWizardDialog(true)}
+            >
+              <RotateCcw className="h-4 w-4 text-muted-foreground" />
+              Rerun Setup Wizard
+            </Button>
+            
+            <Button 
+              variant="secondary" 
+              className="w-full justify-start gap-2 h-9"
+              onClick={handleUpdateBackend}
+              disabled={!isDesktop}
+              title={!isDesktop ? "Only available in the desktop app" : ""}
+            >
+              <Download className="h-4 w-4 text-muted-foreground" />
+              Update Hermes Backend
             </Button>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => window.hermesDesktop?.openExternal?.('https://github.com/henryrocks7800/hermes-agent-desktop')}
-            className="gap-2"
-          >
-            <Github className="h-4 w-4" />
-            View on GitHub
-          </Button>
         </div>
+      </div>
 
-        <Button onClick={handleSave} className="w-full">
+      {/* Fixed bottom bar for Save button */}
+      <div className="absolute bottom-0 left-0 right-0 p-4 bg-background/80 backdrop-blur-sm border-t border-border flex items-center justify-between">
+        <div className="flex-1">
+          {showSaveToast && (
+            <div className="flex items-center gap-2 text-sm text-green-500 font-medium animate-in fade-in slide-in-from-bottom-2">
+              <Check className="h-4 w-4" />
+              Settings saved
+            </div>
+          )}
+        </div>
+        <Button onClick={handleSave} className="w-32">
           Save Settings
         </Button>
       </div>
+
+      {/* Rerun Wizard Dialog */}
+      <Dialog open={rerunWizardDialog} onOpenChange={setRerunWizardDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rerun Setup Wizard</DialogTitle>
+            <DialogDescription>
+              This will rerun the setup wizard. Your current settings will be preserved as defaults. Continue?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setRerunWizardDialog(false)}>Cancel</Button>
+            <Button onClick={handleRerunWizard}>Continue</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Update Backend Dialog */}
+      <Dialog open={updateDialog} onOpenChange={(open) => !updating && setUpdateDialog(open)}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              Update Hermes Agent
+              {updating && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+            </DialogTitle>
+            <DialogDescription>
+              Pulling the latest source code and reinstalling dependencies.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="mt-4 rounded-md bg-muted border border-border p-3">
+            <div 
+              ref={scrollRef}
+              className="h-[200px] overflow-y-auto font-mono text-xs space-y-1.5"
+            >
+              {updateLog.length === 0 && <div className="text-muted-foreground">Initializing...</div>}
+              {updateLog.map((line, i) => (
+                <div key={i} className="whitespace-pre-wrap">{line}</div>
+              ))}
+            </div>
+          </div>
+
+          {updateResult && (
+            <div className={cn(
+              "mt-4 p-3 rounded-md text-sm flex items-start gap-2",
+              updateResult.success ? "bg-green-500/10 text-green-600 dark:text-green-400" : "bg-destructive/10 text-destructive"
+            )}>
+              {updateResult.success ? <Check className="h-4 w-4 shrink-0 mt-0.5" /> : <X className="h-4 w-4 shrink-0 mt-0.5" />}
+              <div>
+                <div className="font-medium">{updateResult.success ? "Update Successful" : "Update Failed"}</div>
+                <div className="mt-1 opacity-90 text-xs">
+                  {updateResult.success 
+                    ? "Restart the app to use the new version." 
+                    : updateResult.message}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="mt-2">
+            <Button onClick={() => setUpdateDialog(false)} disabled={updating}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

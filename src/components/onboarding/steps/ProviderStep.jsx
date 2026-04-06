@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { PROVIDER_MODELS } from '@/lib/commands'
-import { Eye, EyeOff, Check, ArrowLeft, ArrowRight } from 'lucide-react'
+import { Eye, EyeOff, ArrowLeft, ArrowRight } from 'lucide-react'
 
 const providers = [
   { id: 'openai-codex', label: 'OpenAI Codex', sublabel: 'OAuth login' },
@@ -20,10 +20,13 @@ const providers = [
 
 export default function ProviderStep({ settings, updateSettings, onNext, onBack }) {
   const [showApiKey, setShowApiKey] = useState(false)
+  const [error, setError] = useState(null)
+  
   const selectedProvider = providers.find(p => p.id === settings.provider)
 
   const handleProviderSelect = (id) => {
-    updateSettings({ provider: id })
+    updateSettings({ provider: id, model: '', apiKey: '' })
+    setError(null)
     // Set default base URL for local providers
     if (id === 'ollama') {
       updateSettings({ baseUrl: 'http://localhost:11434/v1' })
@@ -38,9 +41,29 @@ export default function ProviderStep({ settings, updateSettings, onNext, onBack 
 
   const handleModelSelect = (model) => {
     updateSettings({ model })
+    setError(null)
   }
 
-  const canProceed = settings.provider && settings.model
+  const handleNext = () => {
+    if (!settings.provider) {
+      setError('Please select a provider.')
+      return
+    }
+
+    const requiresApiKey = ['openai', 'anthropic', 'openrouter', 'gemini', 'custom'].includes(settings.provider)
+    if (requiresApiKey && !settings.apiKey.trim()) {
+      setError('API key is required for this provider.')
+      return
+    }
+
+    if (!settings.model.trim()) {
+      setError('Please select or enter a model name.')
+      return
+    }
+
+    setError(null)
+    onNext()
+  }
 
   return (
     <div className="bg-card border border-border rounded-xl p-6">
@@ -79,8 +102,11 @@ export default function ProviderStep({ settings, updateSettings, onNext, onBack 
                   type={showApiKey ? 'text' : 'password'}
                   placeholder="sk-..."
                   value={settings.apiKey}
-                  onChange={(e) => updateSettings({ apiKey: e.target.value })}
-                  className="pr-10"
+                  onChange={(e) => {
+                    updateSettings({ apiKey: e.target.value })
+                    setError(null)
+                  }}
+                  className={cn("pr-10", error && !settings.apiKey.trim() && "border-destructive focus-visible:ring-destructive")}
                 />
                 <button
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
@@ -110,14 +136,17 @@ export default function ProviderStep({ settings, updateSettings, onNext, onBack 
       )}
 
       {/* Model Selection */}
-      {settings.provider && settings.apiKey || ['ollama', 'lmstudio'].includes(settings.provider) && (
+      {selectedProvider && (
         <div className="mb-6">
           <label className="text-sm font-medium mb-2 block">Model</label>
           <Input
             placeholder="Enter model name"
             value={settings.model}
-            onChange={(e) => updateSettings({ model: e.target.value })}
-            className="mb-3"
+            onChange={(e) => {
+              updateSettings({ model: e.target.value })
+              setError(null)
+            }}
+            className={cn("mb-3", error && !settings.model.trim() && "border-destructive focus-visible:ring-destructive")}
           />
           {PROVIDER_MODELS[settings.provider] && (
             <div className="flex flex-wrap gap-2">
@@ -136,12 +165,18 @@ export default function ProviderStep({ settings, updateSettings, onNext, onBack 
         </div>
       )}
 
+      {error && (
+        <div className="mb-4 text-sm text-destructive font-medium">
+          {error}
+        </div>
+      )}
+
       <div className="flex justify-between">
         <Button variant="ghost" onClick={onBack} className="gap-1">
           <ArrowLeft className="h-4 w-4" />
           Back
         </Button>
-        <Button onClick={onNext} disabled={!canProceed} className="gap-2">
+        <Button onClick={handleNext} className="gap-2">
           Next
           <ArrowRight className="h-4 w-4" />
         </Button>

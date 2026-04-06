@@ -12,4 +12,6 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   writeConfig:      (data) => ipcRenderer.invoke('config:write', data),
   checkBackendHealth: (url) => ipcRenderer.invoke('backend:health', url),
   onCommand:        (cb) => ipcRenderer.on('command', (_, cmd) => cb(cmd)),
+  updateBackend:    () => ipcRenderer.invoke('backend:update'),
+  onUpdateProgress: (cb) => ipcRenderer.on('backend:update-progress', (_, msg) => cb(msg)),
 })

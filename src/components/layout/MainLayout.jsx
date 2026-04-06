@@ -9,12 +9,23 @@ import SettingsPage from '../pages/SettingsPage.jsx'
 
 export default function MainLayout() {
   const [activePage, setActivePage] = useState('chat')
-  const [threads, setThreads] = useState(() => storage.get(KEYS.THREADS, []))
+  const [threads, setThreads] = useState(() => {
+    const raw = storage.get(KEYS.THREADS, [])
+    return raw.map(t => ({ ...t, messages: t.messages || storage.get('thread.' + t.id, []) }))
+  })
   const [activeThreadId, setActiveThreadId] = useState(() => storage.get(KEYS.ACTIVE_THREAD, null))
   const [connectionStatus, setConnectionStatus] = useState('connecting')
 
   useEffect(() => {
-    storage.set(KEYS.THREADS, threads)
+    // Only save metadata to threads index
+    const metadata = threads.map(t => ({ id: t.id, title: t.title, createdAt: t.createdAt }))
+    storage.set(KEYS.THREADS, metadata)
+    // Save individual thread messages
+    threads.forEach(t => {
+      if (t.messages && t.messages.length > 0) {
+        storage.set('thread.' + t.id, t.messages)
+      }
+    })
   }, [threads])
 
   useEffect(() => {
@@ -104,6 +115,9 @@ export default function MainLayout() {
             onDeleteThread={(id) => {
               setThreads(threads.filter(t => t.id !== id))
               if (activeThreadId === id) setActiveThreadId(null)
+            }}
+            onRenameThread={(id, newTitle) => {
+              setThreads(threads.map(t => t.id === id ? { ...t, title: newTitle } : t))
             }}
           />
         )}

@@ -184,7 +184,7 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
       {/* Messages */}
       <ScrollArea ref={scrollAreaRef} className="flex-1 overflow-y-auto">
         <div className="pb-4 h-full">
-          {!thread && messages.length === 0 ? (
+          {messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center p-8 mt-12">
         <div className="w-16 h-16 rounded-2xl bg-muted border border-border text-foreground flex items-center justify-center mb-4">
           <span className="font-bold text-2xl">⚕</span>

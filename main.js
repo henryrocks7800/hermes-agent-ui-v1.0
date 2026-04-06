@@ -3,6 +3,10 @@ import { fileURLToPath } from 'url'
 import path from 'path'
 import fs from 'fs'
 import http from 'http'
+import { exec } from 'child_process'
+import { promisify } from 'util'
+
+const execAsync = promisify(exec)
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -104,5 +108,26 @@ ipcMain.handle('backend:health', async (_, url) => {
     return res.ok
   } catch (err) {
     return false
+  }
+})
+
+ipcMain.handle('backend:update', async (event) => {
+  const hermesPath = path.join(process.env.HOME || process.env.USERPROFILE, '.hermes', 'hermes-agent')
+
+  const send = (msg) => event.sender.send('backend:update-progress', msg)
+
+  try {
+    send('Checking for updates...')
+
+    const { stdout: gitOut } = await execAsync('git pull origin main', { cwd: hermesPath })
+    send(gitOut.trim() || 'Git pull complete')
+
+    send('Installing latest version...')
+    await execAsync('pip install -e . --quiet', { cwd: hermesPath })
+    send('Install complete')
+
+    return { success: true, message: 'Hermes Agent updated successfully' }
+  } catch (err) {
+    return { success: false, message: err.message }
   }
 })

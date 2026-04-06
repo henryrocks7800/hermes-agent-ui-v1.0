@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Zap, Search, Terminal, FileText, Globe, Image, Mic } from 'lucide-react'
 
 const availableSkills = [
@@ -14,40 +16,59 @@ const availableSkills = [
 ]
 
 export default function SkillsPage() {
+  const [activeFilter, setActiveFilter] = useState('All')
+  const [inspecting, setInspecting] = useState(null)
+
+  const filteredSkills = availableSkills.filter(s => {
+    if (activeFilter === 'All' || activeFilter === 'Installed') return true
+    return s.category === activeFilter
+  })
+
   return (
-    <div className="h-full flex flex-col p-4">
-      <div className="mb-4">
+    <div className="h-full flex flex-col p-6">
+      <div className="mb-6">
         <h1 className="text-2xl font-bold mb-1">Skills</h1>
-        <p className="text-muted-foreground">Browse and manage skills for Hermes Agent.</p>
+        <p className="text-sm text-muted-foreground">Browse and manage skills for Hermes Agent.</p>
       </div>
 
-      <div className="flex gap-2 mb-4">
-        <Badge variant="outline" className="cursor-pointer">All</Badge>
-        <Badge variant="outline" className="cursor-pointer">Development</Badge>
-        <Badge variant="outline" className="cursor-pointer">Tools</Badge>
-        <Badge variant="outline" className="cursor-pointer">Installed</Badge>
+      <div className="flex gap-2 mb-6">
+        {['All', 'Development', 'Tools', 'Installed'].map(filter => (
+          <Badge
+            key={filter}
+            variant={activeFilter === filter ? 'default' : 'outline'}
+            className="cursor-pointer px-3 py-1 text-sm transition-colors"
+            onClick={() => setActiveFilter(filter)}
+          >
+            {filter}
+          </Badge>
+        ))}
       </div>
 
-      <ScrollArea className="flex-1">
-        <div className="grid grid-cols-2 gap-4">
-          {availableSkills.map((skill) => {
+      <ScrollArea className="flex-1 -mx-2 px-2">
+        <div className="grid grid-cols-2 gap-4 pb-6">
+          {filteredSkills.map((skill) => {
             const Icon = skill.icon
             return (
               <div
                 key={skill.id}
-                className="p-4 rounded-lg border border-border hover:border-muted-foreground transition-colors cursor-pointer"
+                className="p-5 rounded-lg border bg-card hover:bg-accent/50 transition-colors flex flex-col"
               >
-                <div className="flex items-start gap-3 mb-2">
-                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <Icon className="h-5 w-5 text-primary" />
+                <div className="flex items-start gap-4 mb-3">
+                  <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                    <Icon className="h-6 w-6 text-primary" />
                   </div>
-                  <div className="flex-1">
-                    <div className="font-medium">{skill.name}</div>
-                    <div className="text-xs text-muted-foreground">{skill.category}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-lg truncate">{skill.name}</div>
+                    <div className="text-sm text-muted-foreground mt-0.5">{skill.category}</div>
                   </div>
                 </div>
-                <p className="text-sm text-muted-foreground mb-3">{skill.description}</p>
-                <Button variant="outline" size="sm" className="w-full">
+                <p className="text-sm text-muted-foreground mb-4 flex-1">{skill.description}</p>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="w-full mt-auto"
+                  onClick={() => setInspecting(skill)}
+                >
                   Inspect
                 </Button>
               </div>
@@ -55,6 +76,40 @@ export default function SkillsPage() {
           })}
         </div>
       </ScrollArea>
+
+      <Dialog open={!!inspecting} onOpenChange={(open) => !open && setInspecting(null)}>
+        <DialogContent className="sm:max-w-[500px]">
+          {inspecting && (
+            <>
+              <DialogHeader>
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                    <inspecting.icon className="h-6 w-6 text-primary" />
+                  </div>
+                  <div>
+                    <DialogTitle className="text-xl">{inspecting.name}</DialogTitle>
+                    <DialogDescription className="mt-1.5">{inspecting.category}</DialogDescription>
+                  </div>
+                </div>
+              </DialogHeader>
+              
+              <div className="space-y-4">
+                <div>
+                  <h4 className="text-sm font-semibold mb-1">Description</h4>
+                  <p className="text-sm text-muted-foreground">{inspecting.description}</p>
+                </div>
+                
+                <div>
+                  <h4 className="text-sm font-semibold mb-2">Usage Example</h4>
+                  <div className="bg-muted rounded-md p-3 font-mono text-xs overflow-x-auto">
+                    {`# Use the ${inspecting.name} skill\n> ${inspecting.name.toLowerCase().replace(/ /g, '-')}`}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

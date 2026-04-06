@@ -103,6 +103,27 @@ export default function Composer({ onSendMessage, disabled, model, onModelChange
         e.preventDefault()
         setShowCommandMenu(false)
         setShowContextMenu(false)
+        // Clear the trigger word
+        const textarea = textareaRef.current
+        if (textarea) {
+          const cursorPos = textarea.selectionStart
+          const textBeforeCursor = value.slice(0, cursorPos)
+          const textAfterCursor = value.slice(cursorPos)
+          let match
+          if (showCommandMenu) {
+            match = textBeforeCursor.match(/\/[a-zA-Z0-9_-]*$/)
+          } else {
+            match = textBeforeCursor.match(/@[a-zA-Z0-9_:]*$/)
+          }
+          if (match) {
+            const newText = textBeforeCursor.slice(0, match.index) + textAfterCursor
+            setValue(newText)
+            setTimeout(() => {
+              textarea.focus()
+              textarea.setSelectionRange(match.index, match.index)
+            }, 0)
+          }
+        }
       }
     } else if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
