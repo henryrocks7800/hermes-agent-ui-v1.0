@@ -5,8 +5,8 @@ import { Check, ArrowRight } from 'lucide-react'
 export default function WelcomeStep({ onBegin, onSkip }) {
   return (
     <div className="bg-card border border-border rounded-xl p-8 text-center">
-      <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center mx-auto mb-4">
-        <span className="text-primary-foreground font-bold text-3xl">⚕</span>
+      <div className="w-16 h-16 rounded-2xl bg-muted border border-border text-foreground flex items-center justify-center mx-auto mb-4">
+        <span className="font-bold text-3xl">⚕</span>
       </div>
       
       <h1 className="text-2xl font-bold mb-2">Hermes Agent Setup</h1>

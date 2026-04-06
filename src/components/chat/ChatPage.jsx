@@ -15,6 +15,7 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
   const [toolCalls, setToolCalls] = useState([])
   const scrollRef = useRef(null)
   const scrollAreaRef = useRef(null)
+  const currentResponseRef = useRef('')
 
   const [provider, setProvider] = useState(() => storage.get(KEYS.PROVIDER, 'openai'))
   const [model, setModel] = useState(() => storage.get(KEYS.MODEL, 'gpt-4o'))
@@ -41,6 +42,7 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
     const userMessage = { role: 'user', content, timestamp: Date.now() }
     const updatedMessages = [...messages, userMessage]
     setMessages(updatedMessages)
+    currentResponseRef.current = ''
     setCurrentResponse('')
     setToolCalls([])
     setIsStreaming(true)
@@ -59,7 +61,8 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
         messages: apiMessages,
         apiKey,
         onToken: (token) => {
-          setCurrentResponse(prev => prev + token)
+          currentResponseRef.current += token
+          setCurrentResponse(currentResponseRef.current)
         },
         onToolCall: (tools) => {
           setToolCalls(prev => [...prev, ...tools])
@@ -67,12 +70,13 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
         onDone: () => {
           const assistantMessage = {
             role: 'assistant',
-            content: currentResponse,
+            content: currentResponseRef.current,
             toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
             timestamp: Date.now(),
           }
           const finalMessages = [...updatedMessages, assistantMessage]
           setMessages(finalMessages)
+          currentResponseRef.current = ''
           setCurrentResponse('')
           setToolCalls([])
           setIsStreaming(false)
@@ -182,9 +186,9 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
         <div className="pb-4 h-full">
           {!thread && messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center p-8 mt-12">
-              <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center mb-4">
-                <span className="text-primary-foreground font-bold text-2xl">⚕</span>
-              </div>
+        <div className="w-16 h-16 rounded-2xl bg-muted border border-border text-foreground flex items-center justify-center mb-4">
+          <span className="font-bold text-2xl">⚕</span>
+        </div>
               <h2 className="text-xl font-semibold mb-2">Ask Hermes anything</h2>
               <p className="text-muted-foreground mb-6 max-w-md">
                 Start a conversation with your AI coding agent. I can help with code, files, terminals, and more.

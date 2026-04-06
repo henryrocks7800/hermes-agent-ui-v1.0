@@ -99,11 +99,10 @@ ipcMain.handle('config:write', async (_, data) => {
 
 // Backend health check
 ipcMain.handle('backend:health', async (_, url) => {
-  return new Promise(resolve => {
-    const req = http.get(`${url}/health`, { timeout: 2000 }, res => {
-      resolve(res.statusCode < 400)
-    })
-    req.on('error', () => resolve(false))
-    req.on('timeout', () => { req.destroy(); resolve(false) })
-  })
+  try {
+    const res = await fetch(`${url}/models`, { signal: AbortSignal.timeout(3000) })
+    return res.ok
+  } catch (err) {
+    return false
+  }
 })
