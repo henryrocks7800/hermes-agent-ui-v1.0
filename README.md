@@ -5,7 +5,7 @@ Welcome to **Hermes Agent Desktop**! This is a beautiful, easy-to-use Windows ap
 ## What is this?
 Hermes is an AI agent that helps you write code, manage files, run terminal commands, and automate software development tasks. Originally built as a Command Line (CLI) tool, this project wraps that powerful engine into a native, modern, and user-friendly desktop interface. 
 
-Even if you aren't a terminal wizard, you can now chat with Hermes, attach files, ask it to read your code, and let it work for you—all from a sleek chat window.
+Even if you aren't a terminal wizard, you can now chat with Hermes, attach files, ask it to read your code, and let it work for you all from a sleek chat window.
 
 ## Key Features
 - **Plug-and-Play AI:** Connects to OpenAI, Anthropic, OpenRouter, or even runs completely offline using local models via Ollama or LM Studio.
