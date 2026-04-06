@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+web-dist/
+out/
+
+# Electron builder cache
+.cache/
+
+# Environment
+.env
+.env.local
+
+# Bundled backend (compiled binaries)
+bundled-backend/hermes-backend/
+
+# Windows artifacts
+*.Zone.Identifier
+*:Zone.Identifier
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/settings.json
+.idea/
+
+# Secrets / local config
+backend-config.json
+window-state.json
+
+# Test artifacts
+test-results/
+playwright-report/
+e2e/snapshots/
+coverage/

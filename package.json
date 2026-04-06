@@ -1,0 +1,71 @@
+{
+  "name": "hermes-agent-desktop",
+  "version": "1.0.0",
+  "description": "Windows desktop GUI for Hermes Agent",
+  "main": "main.js",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:web": "vite --host localhost --port 5173",
+    "build": "vite build",
+    "electron:dev": "npm run build && electron .",
+    "electron:start": "electron .",
+    "dist:win": "npm run build && electron-builder --win nsis",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:update": "playwright test --update-snapshots",
+    "scan:secrets": "node scripts/scan-secrets.mjs",
+    "build:backend": "bash scripts/build-bundled-backend.sh",
+    "update:backend": "bash scripts/update-bundled-backend.sh",
+    "dist:full": "npm run build:backend && npm run dist:win"
+  },
+  "dependencies": {
+    "@fontsource-variable/geist": "^5.0.0",
+    "@radix-ui/react-dialog": "^1.1.0",
+    "@radix-ui/react-dropdown-menu": "^2.1.0",
+    "@radix-ui/react-scroll-area": "^1.2.0",
+    "@radix-ui/react-select": "^2.1.0",
+    "@radix-ui/react-separator": "^1.1.0",
+    "@radix-ui/react-slot": "^1.1.0",
+    "@radix-ui/react-switch": "^1.1.0",
+    "@radix-ui/react-tabs": "^1.1.0",
+    "@radix-ui/react-tooltip": "^1.1.0",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.0",
+    "lucide-react": "^0.400.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "^2.3.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.44.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "autoprefixer": "^10.4.0",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.0.0",
+    "postcss": "^8.4.0",
+    "tailwindcss": "^3.4.0",
+    "vite": "^5.3.0",
+    "vitest": "^1.6.0"
+  },
+  "build": {
+    "appId": "com.hermes.agent.desktop",
+    "productName": "Hermes Agent",
+    "directories": { "output": "dist" },
+    "files": ["web-dist/**/*", "main.js", "preload.js", "main-utils.js"],
+    "extraResources": [
+      { "from": "bundled-backend/hermes-backend", "to": "hermes-backend", "filter": ["**/*"] }
+    ],
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "public/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "public/icon.ico",
+      "uninstallerIcon": "public/icon.ico"
+    }
+  }
+}

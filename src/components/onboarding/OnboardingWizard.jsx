@@ -1,0 +1,116 @@
+import { useState } from 'react'
+import { storage, KEYS } from '@/lib/storage'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { Switch } from '@/components/ui/switch'
+import { Separator } from '@/components/ui/separator'
+import { Badge } from '@/components/ui/badge'
+import { cn } from '@/lib/utils'
+import { PROVIDER_MODELS } from '@/lib/commands'
+import { Check, Eye, EyeOff, ArrowRight, ArrowLeft } from 'lucide-react'
+
+// Step components
+import WelcomeStep from './steps/WelcomeStep.jsx'
+import ProviderStep from './steps/ProviderStep.jsx'
+import BackendStep from './steps/BackendStep.jsx'
+import AgentSettingsStep from './steps/AgentSettingsStep.jsx'
+import ToolsStep from './steps/ToolsStep.jsx'
+
+export default function OnboardingWizard({ onComplete }) {
+  const [step, setStep] = useState(0)
+  const [settings, setSettings] = useState({
+    provider: '',
+    apiKey: '',
+    baseUrl: '',
+    model: '',
+    backendMode: 'auto',
+    externalUrl: 'http://localhost:42424/v1',
+    maxTurns: 90,
+    reasoningEffort: 'medium',
+    toolProgress: 'all',
+    webSearchEnabled: false,
+    firecrawlApiKey: '',
+    visionEnabled: false,
+    ttsEnabled: false,
+    ttsProvider: 'edge',
+  })
+
+  const updateSettings = (updates) => {
+    setSettings(prev => ({ ...prev, ...updates }))
+  }
+
+  const handleComplete = () => {
+    // Save all settings to localStorage
+    storage.set(KEYS.PROVIDER, settings.provider)
+    storage.set(KEYS.MODEL, settings.model)
+    storage.set(KEYS.API_KEY, settings.apiKey)
+    storage.set(KEYS.BASE_URL, settings.baseUrl || 'http://localhost:42424/v1')
+    storage.set(KEYS.BACKEND_MODE, settings.backendMode)
+    storage.set(KEYS.EXTERNAL_URL, settings.externalUrl)
+    storage.set(KEYS.MAX_TURNS, settings.maxTurns)
+    storage.set(KEYS.REASONING, settings.reasoningEffort)
+    storage.set(KEYS.TOOL_PROGRESS, settings.toolProgress)
+    storage.set(KEYS.ONBOARDING_DONE, true)
+    onComplete()
+  }
+
+  return (
+    <div className="fixed inset-0 bg-background flex items-center justify-center p-4">
+      <div className="w-full max-w-lg">
+        {/* Progress dots for steps 1-4 */}
+        {step > 0 && step <= 4 && (
+          <div className="flex gap-2 justify-center mb-6">
+            {[1, 2, 3, 4].map(i => (
+              <div
+                key={i}
+                className={cn(
+                  'h-1.5 w-6 rounded-full transition-colors',
+                  i === step ? 'bg-primary' : i < step ? 'bg-primary/40' : 'bg-muted'
+                )}
+              />
+            ))}
+          </div>
+        )}
+
+        <div className="animate-in fade-in duration-200">
+          {step === 0 && (
+            <WelcomeStep onBegin={() => setStep(1)} onSkip={() => handleComplete()} />
+          )}
+          {step === 1 && (
+            <ProviderStep
+              settings={settings}
+              updateSettings={updateSettings}
+              onNext={() => setStep(2)}
+              onBack={() => setStep(0)}
+            />
+          )}
+          {step === 2 && (
+            <BackendStep
+              settings={settings}
+              updateSettings={updateSettings}
+              onNext={() => setStep(3)}
+              onBack={() => setStep(1)}
+            />
+          )}
+          {step === 3 && (
+            <AgentSettingsStep
+              settings={settings}
+              updateSettings={updateSettings}
+              onNext={() => setStep(4)}
+              onBack={() => setStep(2)}
+            />
+          )}
+          {step === 4 && (
+            <ToolsStep
+              settings={settings}
+              updateSettings={updateSettings}
+              onComplete={handleComplete}
+              onBack={() => setStep(3)}
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
