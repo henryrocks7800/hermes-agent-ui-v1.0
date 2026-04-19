@@ -50,7 +50,7 @@ test.describe('Main UI', () => {
   })
 
   test('sidebar navigation — Skills', async ({ page }) => {
-    await page.getByRole('button', { name: /skills/i }).click()
+    await page.getByRole('button', { name: 'Skills', exact: true }).click()
     await expect(page).toHaveScreenshot('page-skills.png', { maxDiffPixelRatio: 0.02 })
   })
 

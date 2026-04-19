@@ -89,7 +89,7 @@ test.describe('End-to-End Application Features', () => {
     await page.getByRole('button', { name: 'Send' }).click()
     
     // The message should appear in the chat log (user message)
-    await expect(page.getByText('Hello Hermes!')).toBeVisible()
+    await expect(page.locator('p.whitespace-pre-wrap').filter({ hasText: 'Hello Hermes!' })).toBeVisible()
     
     // The composer should be cleared
     await expect(composer).toHaveValue('')

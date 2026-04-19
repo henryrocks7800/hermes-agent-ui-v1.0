@@ -91,72 +91,6 @@ test.describe('Settings Page — Model Tab', () => {
 })
 
 // ──────────────────────────────────────────────────
-// 2. Settings Page — Backend Tab (DEF-001)
-// ──────────────────────────────────────────────────
-
-test.describe('Settings Page — Backend Tab', () => {
-  test.beforeEach(async ({ page }) => {
-    await skipOnboarding(page)
-    await goToSettingsTab(page, 'Backend')
-  })
-
-  test('DEF-001: backend radio buttons are clickable', async ({ page }) => {
-    // All three radio buttons should be present and clickable
-    const autoRadio = page.locator('button[role="radio"]', { hasText: 'Auto-detect' })
-    const externalRadio = page.locator('button[role="radio"]', { hasText: 'External Backend' })
-    const directRadio = page.locator('button[role="radio"]', { hasText: 'Direct Provider' })
-
-    await expect(autoRadio).toBeVisible()
-    await expect(externalRadio).toBeVisible()
-    await expect(directRadio).toBeVisible()
-
-    // Click External Backend
-    await externalRadio.click({ force: true })
-    await expect(externalRadio).toHaveAttribute('aria-checked', 'true')
-
-    // Click Direct Provider
-    await directRadio.click({ force: true })
-    await expect(directRadio).toHaveAttribute('aria-checked', 'true')
-
-    // Click Auto-detect
-    await autoRadio.click({ force: true })
-    await expect(autoRadio).toHaveAttribute('aria-checked', 'true')
-  })
-
-  test('External Backend enables URL field for editing', async ({ page }) => {
-    const externalRadio = page.locator('button[role="radio"]', { hasText: 'External Backend' })
-    await externalRadio.click({ force: true })
-
-    // Backend Configuration section should be visible with an editable URL input
-    await expect(page.getByText('Backend Configuration')).toBeVisible()
-    const urlInput = page.locator('input.font-mono')
-    await expect(urlInput).toBeVisible()
-    await expect(urlInput).toBeEnabled()
-  })
-
-  test('Direct Provider hides Backend Configuration section', async ({ page }) => {
-    const directRadio = page.locator('button[role="radio"]', { hasText: 'Direct Provider' })
-    await directRadio.click({ force: true })
-
-    // Backend Configuration should NOT be visible
-    await expect(page.getByText('Backend Configuration')).not.toBeVisible()
-  })
-
-  test('Auto-detect disables the URL field', async ({ page }) => {
-    const autoRadio = page.locator('button[role="radio"]', { hasText: 'Auto-detect' })
-    await autoRadio.click({ force: true })
-
-    // Backend Configuration section should be visible
-    await expect(page.getByText('Backend Configuration')).toBeVisible()
-
-    // But the URL input should be disabled
-    const urlInput = page.locator('input.font-mono')
-    await expect(urlInput).toBeDisabled()
-  })
-})
-
-// ──────────────────────────────────────────────────
-// 3. Settings Page — Agent Tab
 // ──────────────────────────────────────────────────
 
 test.describe('Settings Page — Agent Tab', () => {
@@ -390,24 +324,16 @@ test.describe('E2E: Full configuration flow', () => {
   test('configure external backend + custom provider, apply, and verify chat page', async ({ page }) => {
     await skipOnboarding(page)
 
-    // --- Step 1: Go to Settings Backend tab, select External Backend ---
-    await goToSettingsTab(page, 'Backend')
-
-    const externalRadio = page.locator('button[role="radio"]', { hasText: 'External Backend' })
-    await externalRadio.click({ force: true })
-    await expect(externalRadio).toHaveAttribute('aria-checked', 'true')
-
-    // Set a custom external URL
-    const urlInput = page.locator('input.font-mono')
-    await urlInput.clear()
-    await urlInput.fill('http://localhost:9999/v1')
-
-    // --- Step 2: Go to Model tab, select custom provider ---
-    const modelTab = page.getByRole('tab', { name: 'Model' })
-    await modelTab.click({ force: true })
+    // --- Step 1: Go to Settings Model tab, select custom provider ---
+    await goToSettingsTab(page, 'Connection')
 
     const customBtn = page.locator('.rounded-xl .grid button', { hasText: 'custom' })
     await customBtn.click({ force: true })
+
+    // Set a custom external URL
+    const urlInput = page.locator('input.font-mono').first()
+    await urlInput.clear()
+    await urlInput.fill('http://localhost:9999/v1')
 
     // API Base URL section should appear for custom provider
     await expect(page.getByText('API Base URL')).toBeVisible()
@@ -416,6 +342,7 @@ test.describe('E2E: Full configuration flow', () => {
     const modelInput = page.locator('input[placeholder="Enter model identifier"]')
     await modelInput.clear()
     await modelInput.fill('my-custom-model-v1')
+
 
     // --- Step 3: Click Apply Settings ---
     const applyBtn = page.locator('button', { hasText: 'Apply Settings' })
@@ -437,9 +364,7 @@ test.describe('E2E: Full configuration flow', () => {
     // --- Step 6: Verify connection status indicator is present ---
     // The connection status is shown in the sidebar footer and in chat header
     // Since http://localhost:9999 likely won't respond, expect "disconnected"
-    const statusIndicator = page.locator('.border-t.border-border .text-xs')
+    const statusIndicator = page.getByText(/Connected|Connecting…|Disconnected/, { exact: true }).first()
     await expect(statusIndicator).toBeVisible()
-    // The status text will be one of: Connected, Connecting…, Disconnected
-    await expect(statusIndicator).toHaveText(/Connected|Connecting|Disconnected/)
   })
 })

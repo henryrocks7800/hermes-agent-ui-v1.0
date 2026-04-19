@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { storage, KEYS } from '@/lib/storage'
 import WelcomeStep from './steps/WelcomeStep.jsx'
 import ProviderStep from './steps/ProviderStep.jsx'
-import BackendStep from './steps/BackendStep.jsx'
 import AgentSettingsStep from './steps/AgentSettingsStep.jsx'
 import ToolsStep from './steps/ToolsStep.jsx'
 import CompletionStep from './steps/CompletionStep.jsx'
@@ -14,8 +13,6 @@ export default function OnboardingWizard({ onComplete }) {
     apiKey: '',
     baseUrl: '',
     model: '',
-    backendMode: 'auto',
-    externalUrl: 'http://localhost:42424/v1',
     maxTurns: 90,
     reasoningEffort: 'medium',
     toolProgress: 'all',
@@ -35,8 +32,6 @@ export default function OnboardingWizard({ onComplete }) {
     storage.set(KEYS.MODEL, settings.model)
     storage.set(KEYS.API_KEY, settings.apiKey)
     storage.set(KEYS.BASE_URL, settings.baseUrl || 'http://localhost:42424/v1')
-    storage.set(KEYS.BACKEND_MODE, settings.backendMode)
-    storage.set(KEYS.EXTERNAL_URL, settings.externalUrl)
     storage.set(KEYS.MAX_TURNS, settings.maxTurns)
     storage.set(KEYS.REASONING, settings.reasoningEffort)
     storage.set(KEYS.TOOL_PROGRESS, settings.toolProgress)
@@ -52,12 +47,12 @@ export default function OnboardingWizard({ onComplete }) {
   return (
     <div className="fixed inset-0 bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-lg">
-        {step > 0 && step <= 4 && (
+        {step > 0 && step <= 3 && (
           <div className="flex gap-2 justify-center mb-6">
-            {[1, 2, 3, 4].map(i => (
+            {[1, 2, 3].map(i => (
               <div
                 key={i}
-                className={`h-1.5 w-6 rounded-full transition-colors ${
+                className={`h-1.5 w-8 rounded-full transition-colors ${
                   i === step ? 'bg-primary' : i < step ? 'bg-primary/40' : 'bg-muted'
                 }`}
               />
@@ -78,7 +73,7 @@ export default function OnboardingWizard({ onComplete }) {
             />
           )}
           {step === 2 && (
-            <BackendStep
+            <AgentSettingsStep
               settings={settings}
               updateSettings={updateSettings}
               onNext={() => setStep(3)}
@@ -86,7 +81,7 @@ export default function OnboardingWizard({ onComplete }) {
             />
           )}
           {step === 3 && (
-            <AgentSettingsStep
+            <ToolsStep
               settings={settings}
               updateSettings={updateSettings}
               onNext={() => setStep(4)}
@@ -94,14 +89,6 @@ export default function OnboardingWizard({ onComplete }) {
             />
           )}
           {step === 4 && (
-            <ToolsStep
-              settings={settings}
-              updateSettings={updateSettings}
-              onNext={() => setStep(5)}
-              onBack={() => setStep(3)}
-            />
-          )}
-          {step === 5 && (
             <CompletionStep
               settings={settings}
               onComplete={handleComplete}

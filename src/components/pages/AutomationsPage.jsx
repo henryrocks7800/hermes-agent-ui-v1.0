@@ -10,7 +10,7 @@ import { Clock, Calendar, Play, Pause, Trash2, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export default function AutomationsPage() {
-  const [jobs, setJobs] = useState(() => storage.get('hermes.automations', []))
+  const [jobs, setJobs] = useState(() => storage.get('automations', []))
   
   const [newDialog, setNewDialog] = useState(false)
   const [newName, setNewName] = useState('')
@@ -28,7 +28,7 @@ export default function AutomationsPage() {
 
   const saveJobs = (newJobs) => {
     setJobs(newJobs)
-    storage.set('hermes.automations', newJobs)
+    storage.set('automations', newJobs)
   }
 
   const toggleStatus = (id) => {

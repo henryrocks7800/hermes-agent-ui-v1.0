@@ -25,35 +25,20 @@ export default function MainLayout() {
   const [activeThreadId, setActiveThreadId] = useState(() => storage.get(KEYS.ACTIVE_THREAD, null))
   const [connectionStatus, setConnectionStatus] = useState('connecting')
   
-  // Refined config state — use || to treat empty string as falsy (DEF-003)
+  // Refined config state
   const [sessionParams, setSessionParams] = useState(() => ({
-    mode: storage.get(KEYS.BACKEND_MODE, 'auto') || 'auto',
     provider: storage.get(KEYS.PROVIDER, 'openai') || 'openai',
     customBase: storage.get(KEYS.BASE_URL, ''),
-    extUrl: storage.get(KEYS.EXTERNAL_URL, ''),
     model: storage.get(KEYS.MODEL, '') || '',
     apiKey: storage.get(KEYS.API_KEY, ''),
   }))
 
   const effectiveSettings = useMemo(() => {
-    const { mode, provider, customBase, extUrl, model, apiKey } = sessionParams
+    const { provider, customBase, model, apiKey } = sessionParams
     
-    let url = 'http://localhost:42424/v1' // Default local Hermes
-    
-    // Logic: If user specifically wants Direct Provider, we MUST use the SaaS URL
-    if (mode === 'embedded') {
-      url = PROVIDER_URLS[provider] || customBase || url
-    } 
-    // Logic: If user wants External Hermes, use the specific IP they provided
-    else if (mode === 'external') {
-      url = extUrl || url
-    }
-    // Logic: Auto mode - tries local first
-    else {
-      url = 'http://localhost:42424/v1'
-    }
+    let url = customBase || PROVIDER_URLS[provider] || 'http://localhost:42424/v1'
 
-    return { baseUrl: url, model, apiKey, provider, mode }
+    return { baseUrl: url, model, apiKey, provider, mode: 'embedded' }
   }, [sessionParams])
 
   useEffect(() => {
@@ -111,10 +96,8 @@ export default function MainLayout() {
     
     // Use nullish coalescing to allow empty strings (e.g., blank apiKey is valid for local providers)
     setSessionParams({
-      mode: newSet[KEYS.BACKEND_MODE] ?? storage.get(KEYS.BACKEND_MODE) ?? 'auto',
       provider: newSet[KEYS.PROVIDER] ?? storage.get(KEYS.PROVIDER) ?? 'openai',
       customBase: newSet[KEYS.BASE_URL] ?? storage.get(KEYS.BASE_URL) ?? '',
-      extUrl: newSet[KEYS.EXTERNAL_URL] ?? storage.get(KEYS.EXTERNAL_URL) ?? '',
       model: newSet[KEYS.MODEL] ?? storage.get(KEYS.MODEL) ?? '',
       apiKey: newSet[KEYS.API_KEY] ?? storage.get(KEYS.API_KEY) ?? '',
     })

@@ -20,7 +20,15 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
   const { baseUrl, model, apiKey, provider, mode } = settings
 
   useEffect(() => {
-    setMessages(thread?.messages || [])
+    if (thread?.messages) {
+      setMessages(thread.messages)
+    } else if (!thread) {
+      setMessages([{
+        role: 'assistant',
+        content: `**Hermes Engine Initialized.**\n\nI am ready to assist with codebase inspection, autonomous task execution, and technical reasoning. What would you like to build?`,
+        timestamp: Date.now()
+      }])
+    }
   }, [thread?.id])
 
   useEffect(() => {
@@ -57,7 +65,7 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
       onUpdateThread(currentThread)
     }
 
-    const systemPrompt = `You are Hermes, an AI coding agent. Be concise and direct.`
+    const systemPrompt = `You are Hermes, an elite autonomous AI software engineer and orchestrator.\nAlways think step-by-step before answering.\nBreak down complex tasks into phases.\nBe concise, direct, and professional.\nUse tools when necessary.`
     const apiMessages = [
       { role: 'system', content: systemPrompt },
       ...updatedMessages.map(m => ({ role: m.role, content: m.content })),

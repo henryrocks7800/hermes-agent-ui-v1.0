@@ -71,7 +71,7 @@ export const PROVIDER_MODELS = {
   'anthropic':     ['claude-opus-4.6', 'claude-sonnet-4.6', 'claude-sonnet-4.5', 'claude-haiku-4.5'],
   'openrouter':    ['anthropic/claude-sonnet-4.6', 'google/gemini-2.5-flash', 'openai/gpt-4o', 'deepseek/deepseek-r1'],
   'ollama':        ['llama3.1:8b', 'qwen3-coder', 'mistral', 'gemma3:12b'],
-  'lmstudio':      ['local-model'],
+  'lmstudio':      ['default', 'qwen3-coder-30b'],
   'gemini':        ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash'],
   'copilot':       ['gpt-5.4', 'gpt-5.4-mini', 'claude-sonnet-4.6', 'gemini-2.5-pro'],
   'custom':        ['gpt-4o-mini', 'qwen3-coder-next'],

@@ -183,9 +183,8 @@ export default function SettingsPage({ onSave }) {
           </div>
 
           <Tabs defaultValue="model" className="w-full">
-            <TabsList className="grid w-full grid-cols-4 bg-muted/50 p-1 rounded-xl border border-border/50">
-              <TabsTrigger value="model" className="rounded-lg">Model</TabsTrigger>
-              <TabsTrigger value="backend" className="rounded-lg">Backend</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-3 bg-muted/50 p-1 rounded-xl border border-border/50">
+              <TabsTrigger value="model" className="rounded-lg">Connection</TabsTrigger>
               <TabsTrigger value="agent" className="rounded-lg">Agent</TabsTrigger>
               <TabsTrigger value="tools" className="rounded-lg">Tools</TabsTrigger>
             </TabsList>
@@ -304,81 +303,6 @@ export default function SettingsPage({ onSave }) {
                   </div>
                 )}
               </div>
-            </TabsContent>
-
-            <TabsContent value="backend" className="space-y-6 mt-8">
-              <div className="p-6 rounded-xl border border-border bg-card shadow-sm">
-                <h3 className="font-semibold mb-4 text-base">Connection Strategy</h3>
-                {/* DEF-001 fix: Use button-based selection instead of sr-only radio inputs */}
-                <div className="space-y-3" role="radiogroup" aria-label="Backend mode">
-                  {[
-                    { id: 'auto', label: 'Auto-detect', sub: 'Priority to local Hermes with direct fallback' },
-                    { id: 'external', label: 'External Backend', sub: 'Connect to a remote or managed Hermes instance' },
-                    { id: 'embedded', label: 'Direct Provider', sub: 'Bypass Hermes and talk directly to the AI service' },
-                  ].map((m) => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      role="radio"
-                      aria-checked={backendMode === m.id}
-                      onClick={() => setBackendMode(m.id)}
-                      className={cn(
-                        'w-full flex items-center gap-4 p-4 rounded-xl border cursor-pointer transition-all text-left',
-                        backendMode === m.id 
-                          ? 'border-primary bg-primary/[0.03] ring-1 ring-primary/20' 
-                          : 'border-border hover:bg-muted/30'
-                      )}
-                    >
-                      <div className={cn(
-                        "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors shrink-0",
-                        backendMode === m.id ? "border-primary" : "border-muted-foreground/30"
-                      )}>
-                        {backendMode === m.id && <div className="w-2.5 h-2.5 rounded-full bg-primary" />}
-                      </div>
-                      <div className="flex-1">
-                        <div className="text-sm font-bold">{m.label}</div>
-                        <div className="text-xs text-muted-foreground mt-0.5">{m.sub}</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {(backendMode === 'auto' || backendMode === 'external') && (
-                <div className="p-6 rounded-xl border border-border bg-card shadow-sm animate-in zoom-in-95">
-                  <h3 className="font-semibold mb-4 text-base">Backend Configuration</h3>
-                  <div className="flex gap-3">
-                    <div className="flex-1 space-y-2">
-                       <label className="text-[10px] font-bold text-muted-foreground uppercase">Endpoint URL</label>
-                       <Input
-                        value={backendMode === 'external' ? externalUrl : 'http://localhost:42424/v1'}
-                        onChange={(e) => setExternalUrl(e.target.value)}
-                        disabled={backendMode === 'auto'}
-                        className="h-11 bg-background font-mono text-sm"
-                      />
-                    </div>
-                    <div className="self-end pb-0.5">
-                      <Button 
-                        variant="outline" 
-                        onClick={handleTestConnection} 
-                        disabled={testingConnection}
-                        className="h-11 px-6 font-bold"
-                      >
-                        {testingConnection ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Ping'}
-                      </Button>
-                    </div>
-                  </div>
-                  {connectionResult && (
-                    <div className={cn(
-                      'mt-4 p-3 rounded-lg text-sm flex items-center gap-3 border', 
-                      connectionResult.success ? 'bg-green-500/10 text-green-600 border-green-500/20' : 'bg-destructive/10 text-destructive border-destructive/20'
-                    )}>
-                      {connectionResult.success ? <Check className="h-5 w-5" /> : <X className="h-5 w-5" />}
-                      <span className="font-medium">{connectionResult.message}</span>
-                    </div>
-                  )}
-                </div>
-              )}
             </TabsContent>
 
             <TabsContent value="agent" className="space-y-6 mt-8">
@@ -527,72 +451,7 @@ export default function SettingsPage({ onSave }) {
             </TabsContent>
           </Tabs>
 
-          <Separator className="my-10" />
-
-          <div className="p-8 rounded-2xl border border-border bg-muted/30 relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:scale-110 transition-transform">
-               <span className="text-8xl font-black">⚕</span>
             </div>
-            
-            <h3 className="font-bold text-lg mb-6 flex items-center gap-3">
-               Developer Console
-               <Badge className="bg-primary/10 text-primary border-none shadow-none text-[10px]">VER 1.0.0</Badge>
-            </h3>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Button 
-                variant="outline" 
-                className="justify-start h-12 px-5 gap-3 bg-card border-border/50 hover:border-primary/50 transition-all"
-                onClick={() => window.hermesDesktop?.openExternal?.('https://github.com/henryrocks7800/hermes-agent-desktop')}
-              >
-                <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center"><Github className="h-4 w-4" /></div>
-                <div className="text-left">
-                  <div className="text-xs font-bold">Open Source</div>
-                  <div className="text-[10px] text-muted-foreground">View main repository</div>
-                </div>
-              </Button>
-
-              <Button 
-                variant="outline" 
-                className="justify-start h-12 px-5 gap-3 bg-card border-border/50 hover:border-primary/50 transition-all"
-                onClick={handleCheckForUpdates}
-              >
-                <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center"><ExternalLink className="h-4 w-4" /></div>
-                <div className="text-left">
-                   <div className="text-xs font-bold">Release Log</div>
-                   <div className="text-[10px] text-muted-foreground">Check for UI updates</div>
-                </div>
-              </Button>
-
-              <Button 
-                variant="secondary" 
-                className="justify-start h-12 px-5 gap-3 border border-border/20 shadow-sm"
-                onClick={() => setRerunWizardDialog(true)}
-              >
-                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary"><RotateCcw className="h-4 w-4" /></div>
-                <div className="text-left">
-                   <div className="text-xs font-bold">Reset Wizard</div>
-                   <div className="text-[10px] text-muted-foreground">Re-run setup guide</div>
-                </div>
-              </Button>
-
-              <Button 
-                variant="secondary" 
-                className="justify-start h-12 px-5 gap-3 border border-border/20 shadow-sm disabled:opacity-50"
-                onClick={handleUpdateBackend}
-                disabled={!isDesktop}
-              >
-                 <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-                    {updating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                 </div>
-                 <div className="text-left">
-                   <div className="text-xs font-bold">Update Engine</div>
-                   <div className="text-[10px] text-muted-foreground">Sync local backend</div>
-                 </div>
-              </Button>
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* Persistent Save Bar */}
