@@ -3,19 +3,16 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-import { PROVIDER_MODELS } from '@/lib/commands'
+import { PROVIDER_MODELS, PROVIDER_URLS } from '@/lib/commands'
 import { Eye, EyeOff, ArrowLeft, ArrowRight } from 'lucide-react'
 
 const providers = [
-  { id: 'openai-codex', label: 'OpenAI Codex', sublabel: 'OAuth login' },
   { id: 'openai', label: 'OpenAI', sublabel: 'API key' },
   { id: 'anthropic', label: 'Anthropic', sublabel: 'API key' },
-  { id: 'openrouter', label: 'OpenRouter', sublabel: 'API key — access to many models' },
-  { id: 'ollama', label: 'Ollama', sublabel: 'Free, runs locally' },
-  { id: 'lmstudio', label: 'LM Studio', sublabel: 'Free, runs locally' },
+  { id: 'openrouter', label: 'OpenRouter', sublabel: 'API key' },
   { id: 'gemini', label: 'Google Gemini', sublabel: 'API key' },
-  { id: 'copilot', label: 'GitHub Copilot', sublabel: 'OAuth login' },
-  { id: 'custom', label: 'Custom endpoint', sublabel: 'Any OpenAI-compatible API' },
+  { id: 'copilot', label: 'GitHub Copilot', sublabel: 'API key' },
+  { id: 'local', label: 'Local', sublabel: 'Hermes, Ollama, LM Studio, or any compatible local endpoint' },
 ]
 
 export default function ProviderStep({ settings, updateSettings, onNext, onBack }) {
@@ -25,18 +22,8 @@ export default function ProviderStep({ settings, updateSettings, onNext, onBack 
   const selectedProvider = providers.find(p => p.id === settings.provider)
 
   const handleProviderSelect = (id) => {
-    updateSettings({ provider: id, model: '', apiKey: '' })
+    updateSettings({ provider: id, model: '', apiKey: '', baseUrl: PROVIDER_URLS[id] || '' })
     setError(null)
-    // Set default base URL for local providers
-    if (id === 'ollama') {
-      updateSettings({ baseUrl: 'http://localhost:11434/v1' })
-    } else if (id === 'lmstudio') {
-      updateSettings({ baseUrl: 'http://localhost:1234/v1' })
-    } else if (id === 'custom') {
-      updateSettings({ baseUrl: '' })
-    } else {
-      updateSettings({ baseUrl: 'https://api.openai.com/v1' })
-    }
   }
 
   const handleModelSelect = (model) => {
@@ -50,7 +37,7 @@ export default function ProviderStep({ settings, updateSettings, onNext, onBack 
       return
     }
 
-    const requiresApiKey = ['openai', 'anthropic', 'openrouter', 'gemini'].includes(settings.provider)
+    const requiresApiKey = settings.provider !== 'local'
     if (requiresApiKey && !settings.apiKey.trim()) {
       setError('API key is required for this provider.')
       return
@@ -94,7 +81,7 @@ export default function ProviderStep({ settings, updateSettings, onNext, onBack 
       {/* Credential Input */}
       {selectedProvider && (
         <div className="space-y-4 mb-6">
-          {['openai', 'anthropic', 'openrouter', 'gemini', 'custom'].includes(settings.provider) && (
+          {settings.provider !== 'local' && (
             <div>
               <label className="text-sm font-medium mb-2 block">API Key</label>
               <div className="relative">
@@ -118,20 +105,15 @@ export default function ProviderStep({ settings, updateSettings, onNext, onBack 
             </div>
           )}
 
-          {['ollama', 'lmstudio', 'custom'].includes(settings.provider) && (
-            <div>
-              <label className="text-sm font-medium mb-2 block">Base URL</label>
-              <Input
-                placeholder="http://localhost:11434/v1"
-                value={settings.baseUrl}
-                onChange={(e) => updateSettings({ baseUrl: e.target.value })}
-              />
-            </div>
-          )}
-
-          {['openai-codex', 'copilot'].includes(settings.provider) && (
-            <Button className="w-full">Connect with OAuth</Button>
-          )}
+          <div>
+            <label className="text-sm font-medium mb-2 block">Base URL</label>
+            <Input
+              placeholder={PROVIDER_URLS[settings.provider] || 'https://api.openai.com/v1'}
+              value={settings.baseUrl}
+              autoComplete="off"
+              onChange={(e) => updateSettings({ baseUrl: e.target.value })}
+            />
+          </div>
         </div>
       )}
 

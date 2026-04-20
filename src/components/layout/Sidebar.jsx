@@ -10,8 +10,6 @@ import { storage } from '@/lib/storage'
 const navItems = [
   { id: 'chat', label: 'Chat', icon: MessageSquare },
   { id: 'threads', label: 'Threads', icon: BookOpen },
-  { id: 'skills', label: 'Skills', icon: Zap },
-  { id: 'automations', label: 'Automations', icon: Zap },
 ]
 
 export default function Sidebar({ activePage, onNavigate, threads, activeThreadId, onSelectThread, onNewThread, connectionStatus }) {
@@ -55,7 +53,7 @@ export default function Sidebar({ activePage, onNavigate, threads, activeThreadI
 
         {/* New Thread */}
         <div className="p-3">
-          <Button variant="default" className="w-full justify-start gap-2" onClick={onNewThread}>
+          <Button variant="outline" className="w-full justify-start gap-2 shadow-sm font-medium" onClick={onNewThread}>
             <Plus className="h-4 w-4" />
             New thread
           </Button>

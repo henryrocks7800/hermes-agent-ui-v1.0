@@ -8,22 +8,24 @@ import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { PROVIDER_MODELS } from '@/lib/commands'
-import { ArrowLeft, ArrowRight, Check, X, Loader2, ExternalLink, Github, RotateCcw, Download } from 'lucide-react'
+import { PROVIDER_MODELS, PROVIDER_URLS } from '@/lib/commands'
+import { Check, X, Loader2, ExternalLink, Github, RotateCcw, Download } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-// Providers that use OAuth — no API key field, show OAuth placeholder
-const OAUTH_PROVIDERS = ['openai-codex', 'copilot']
-// Providers that don't need an API key (local runners)
-const NO_KEY_PROVIDERS = ['ollama', 'lmstudio']
-// Providers that need a base URL input on Model tab
-const BASE_URL_PROVIDERS = ['ollama', 'lmstudio', 'custom']
+const PROVIDER_LABELS = {
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  openrouter: 'OpenRouter',
+  gemini: 'Google Gemini',
+  copilot: 'GitHub Copilot',
+  local: 'Local',
+}
 
 export default function SettingsPage({ onSave }) {
   const [provider, setProvider] = useState(() => storage.get(KEYS.PROVIDER, '') || 'openai')
   const [model, setModel] = useState(() => storage.get(KEYS.MODEL, ''))
   const [apiKey, setApiKey] = useState(() => storage.get(KEYS.API_KEY, ''))
-  const [baseUrl, setBaseUrl] = useState(() => storage.get(KEYS.BASE_URL, 'http://localhost:42424/v1'))
+  const [baseUrl, setBaseUrl] = useState(() => storage.get(KEYS.BASE_URL, PROVIDER_URLS[storage.get(KEYS.PROVIDER, '') || 'openai'] || PROVIDER_URLS.openai))
   const [backendMode, setBackendMode] = useState(() => storage.get(KEYS.BACKEND_MODE, 'auto'))
   const [externalUrl, setExternalUrl] = useState(() => storage.get(KEYS.EXTERNAL_URL, 'http://localhost:42424/v1'))
   const [maxTurns, setMaxTurns] = useState(() => storage.get(KEYS.MAX_TURNS, 90))
@@ -37,6 +39,8 @@ export default function SettingsPage({ onSave }) {
   
   const [testingConnection, setTestingConnection] = useState(false)
   const [connectionResult, setConnectionResult] = useState(null)
+  // Per-provider connection status: 'connected' | 'failed' | 'testing' | undefined
+  const [providerStatus, setProviderStatus] = useState({})
   const [showSaveToast, setShowSaveToast] = useState(false)
   const [rerunWizardDialog, setRerunWizardDialog] = useState(false)
   
@@ -75,11 +79,12 @@ export default function SettingsPage({ onSave }) {
   }
 
   const doSave = (modelToSave) => {
+    const normalizedBaseUrl = baseUrl.trim() || PROVIDER_URLS[provider] || PROVIDER_URLS.openai
     onSave({
       [KEYS.PROVIDER]: provider,
       [KEYS.MODEL]: modelToSave,
-      [KEYS.API_KEY]: apiKey,
-      [KEYS.BASE_URL]: baseUrl,
+      [KEYS.API_KEY]: apiKey.trim(),
+      [KEYS.BASE_URL]: normalizedBaseUrl,
       [KEYS.BACKEND_MODE]: backendMode,
       [KEYS.EXTERNAL_URL]: externalUrl,
       [KEYS.MAX_TURNS]: maxTurns,
@@ -96,32 +101,116 @@ export default function SettingsPage({ onSave }) {
     setTimeout(() => setShowSaveToast(false), 3000)
   }
 
-  const handleTestConnection = async () => {
-    const url = backendMode === 'external' ? externalUrl : 'http://localhost:42424/v1'
-    setTestingConnection(true)
+  const handleProviderChange = (nextProvider) => {
+    setProvider(nextProvider)
+    setBaseUrl(PROVIDER_URLS[nextProvider] || '')
+    setApiKey('')
     setConnectionResult(null)
+    if (model && !(PROVIDER_MODELS[nextProvider] || []).includes(model)) {
+      setModel(PROVIDER_MODELS[nextProvider]?.[0] || '')
+    }
+  }
+
+  // Map a thrown fetch/HTTP error into something a human can act on.
+  const explainConnectionError = (err, provider, url) => {
+    const msg = (err && err.message) || ''
+    const name = (err && err.name) || ''
+    if (name === 'AbortError' || /timeout/i.test(msg)) {
+      return `Timed out reaching ${url}. The endpoint did not respond within a few seconds — check it is running and reachable.`
+    }
+    if (name === 'TypeError' && /fetch/i.test(msg)) {
+      // Browser fetch's generic "Failed to fetch" — try to be specific.
+      if (provider === 'local') {
+        return `Could not reach the local endpoint at ${url}. Is your local LLM server (Ollama, LM Studio, Hermes, etc.) running and listening on that URL? If you are running this in a browser on Windows but the server is on WSL (or vice versa), use the host's IP, not localhost.`
+      }
+      return `Could not reach ${url}. The browser blocked the request or the host is unreachable. This is usually a CORS error (the provider does not allow direct browser calls), a DNS / network failure, or the URL is wrong.`
+    }
+    if (/HTTP 401/.test(msg) || /unauthor/i.test(msg) || /invalid_api_key/i.test(msg)) {
+      return `Authentication failed (HTTP 401). The API key was rejected by the provider — double-check that you copied it in full and that it is active.`
+    }
+    if (/HTTP 403/.test(msg)) {
+      return `Forbidden (HTTP 403). The key may be valid but does not have access to this endpoint or model.`
+    }
+    if (/HTTP 404/.test(msg)) {
+      return `Not found (HTTP 404). The base URL probably does not point at an OpenAI-compatible /models route — check the URL.`
+    }
+    if (/HTTP 429/.test(msg)) {
+      return `Rate limited (HTTP 429). The provider says you are sending too many requests — wait a bit and try again.`
+    }
+    if (/HTTP 5\d\d/.test(msg)) {
+      return `Provider returned a server error: ${msg}. Try again shortly.`
+    }
+    return msg || 'Connection failed for an unknown reason.'
+  }
+
+  // Run the connection check. If `silent`, we update `providerStatus` only
+  // (used for auto-checks on mount / provider switch). If not silent, we
+  // also surface the result/error next to the Test connection button.
+  const runConnectionCheck = async ({ silent = false } = {}) => {
+    const url = (baseUrl || PROVIDER_URLS[provider] || '').trim()
+    if (!silent) {
+      setTestingConnection(true)
+      setConnectionResult(null)
+    }
+    setProviderStatus((s) => ({ ...s, [provider]: 'testing' }))
 
     try {
-      let ok = false
-      if (window.hermesDesktop?.checkBackendHealth) {
-        ok = await window.hermesDesktop.checkBackendHealth(url)
-      } else {
-        const response = await fetch(`${url.replace(/\/$/, '')}/models`, {
+      if (!url) throw new Error('Missing base URL')
+
+      let response
+      if (provider === 'local') {
+        response = await fetch(`${url.replace(/\/$/, '')}/models`, {
           method: 'GET',
           signal: AbortSignal.timeout(3000),
         })
-        ok = response.ok
+      } else {
+        if (!apiKey.trim()) throw new Error('Enter an API key before testing this provider.')
+        response = await fetch(`${url.replace(/\/$/, '')}/models`, {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${apiKey.trim()}` },
+          signal: AbortSignal.timeout(5000),
+        })
       }
-      
-      setConnectionResult(ok 
-        ? { success: true, message: 'Connected to Hermes backend!' } 
-        : { success: false, message: 'Backend unreachable. Check URL or firewall.' })
+
+      if (!response.ok) {
+        const body = await response.text().catch(() => '')
+        const trimmed = body && body.length < 240 ? ` — ${body.replace(/\s+/g, ' ').trim()}` : ''
+        throw new Error(`HTTP ${response.status}${trimmed}`)
+      }
+
+      setProviderStatus((s) => ({ ...s, [provider]: 'connected' }))
+      if (!silent) {
+        setConnectionResult({
+          success: true,
+          message: provider === 'local' ? 'Local endpoint responded successfully.' : 'Provider credentials look valid.',
+        })
+      }
     } catch (err) {
-      setConnectionResult({ success: false, message: err.message || 'Connection failed' })
+      setProviderStatus((s) => ({ ...s, [provider]: 'failed' }))
+      if (!silent) {
+        setConnectionResult({ success: false, message: explainConnectionError(err, provider, url) })
+      }
     } finally {
-      setTestingConnection(false)
+      if (!silent) setTestingConnection(false)
     }
   }
+
+  const handleTestConnection = () => runConnectionCheck({ silent: false })
+
+  // Auto-check the current provider whenever its config changes enough to
+  // make the previous result stale. Debounced so the user can finish typing.
+  useEffect(() => {
+    const url = (baseUrl || PROVIDER_URLS[provider] || '').trim()
+    if (!url) return
+    if (provider !== 'local' && !apiKey.trim()) {
+      // No key yet — clear any prior status so we don't show a stale tick.
+      setProviderStatus((s) => ({ ...s, [provider]: undefined }))
+      return
+    }
+    const handle = setTimeout(() => { runConnectionCheck({ silent: true }) }, 600)
+    return () => clearTimeout(handle)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provider, baseUrl, apiKey])
 
   const handleRerunWizard = () => {
     storage.remove(KEYS.ONBOARDING_DONE)
@@ -157,9 +246,6 @@ export default function SettingsPage({ onSave }) {
   }
 
   const isDesktop = !!window.hermesDesktop?.isDesktop
-  const isOAuth = OAUTH_PROVIDERS.includes(provider)
-  const needsKey = !NO_KEY_PROVIDERS.includes(provider) && !isOAuth
-  const needsBaseUrl = BASE_URL_PROVIDERS.includes(provider)
 
   return (
     <div className="h-full flex flex-col relative bg-background animate-in fade-in duration-300">
@@ -183,9 +269,8 @@ export default function SettingsPage({ onSave }) {
           </div>
 
           <Tabs defaultValue="model" className="w-full">
-            <TabsList className="grid w-full grid-cols-4 bg-muted/50 p-1 rounded-xl border border-border/50">
-              <TabsTrigger value="model" className="rounded-lg">Model</TabsTrigger>
-              <TabsTrigger value="backend" className="rounded-lg">Backend</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-3 bg-muted/50 p-1 rounded-xl border border-border/50">
+              <TabsTrigger value="model" className="rounded-lg">Connection</TabsTrigger>
               <TabsTrigger value="agent" className="rounded-lg">Agent</TabsTrigger>
               <TabsTrigger value="tools" className="rounded-lg">Tools</TabsTrigger>
             </TabsList>
@@ -195,17 +280,35 @@ export default function SettingsPage({ onSave }) {
                 <div className="p-6 rounded-xl border border-border bg-card shadow-sm">
                   <h3 className="font-semibold mb-4 text-base">AI Provider</h3>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {Object.keys(PROVIDER_MODELS).map((p) => (
-                      <Button
-                        key={p}
-                        variant={provider === p ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => { setProvider(p); setModel('') }}
-                        className="justify-start h-10 px-4"
-                      >
-                        {p}
-                      </Button>
-                    ))}
+                    {Object.keys(PROVIDER_MODELS).map((p) => {
+                      const status = providerStatus[p]
+                      return (
+                        <Button
+                          key={p}
+                          variant={provider === p ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => handleProviderChange(p)}
+                          className="justify-between h-10 px-4 gap-2"
+                          title={
+                            status === 'connected' ? 'Connected'
+                            : status === 'failed' ? 'Connection failed — check credentials / URL'
+                            : status === 'testing' ? 'Testing connection…'
+                            : 'Connection not yet tested'
+                          }
+                        >
+                          <span className="truncate">{PROVIDER_LABELS[p] || p}</span>
+                          {status === 'connected' ? (
+                            <Check className="h-4 w-4 shrink-0 text-green-500" />
+                          ) : status === 'failed' ? (
+                            <X className="h-4 w-4 shrink-0 text-destructive" />
+                          ) : status === 'testing' ? (
+                            <Loader2 className="h-4 w-4 shrink-0 animate-spin opacity-70" />
+                          ) : (
+                            <span className="h-2 w-2 shrink-0 rounded-full bg-muted-foreground/40" />
+                          )}
+                        </Button>
+                      )
+                    })}
                   </div>
                 </div>
 
@@ -240,145 +343,57 @@ export default function SettingsPage({ onSave }) {
                   )}
                 </div>
 
-                {/* DEF-002 fix: Base URL input for custom/ollama/lmstudio */}
-                {needsBaseUrl && (
-                  <div className="p-6 rounded-xl border border-border bg-card shadow-sm animate-in zoom-in-95">
-                    <h3 className="font-semibold mb-4 text-base">API Base URL</h3>
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Endpoint</label>
-                      <Input
-                        value={baseUrl}
-                        onChange={(e) => setBaseUrl(e.target.value)}
-                        placeholder={provider === 'ollama' ? 'http://localhost:11434/v1' : provider === 'lmstudio' ? 'http://localhost:1234/v1' : 'https://your-api.example.com/v1'}
-                        className="h-11 bg-background font-mono text-sm"
-                      />
-                      <p className="text-[11px] text-muted-foreground">The OpenAI-compatible API endpoint for this provider.</p>
-                    </div>
+                <div className="p-6 rounded-xl border border-border bg-card shadow-sm animate-in zoom-in-95">
+                  <h3 className="font-semibold mb-4 text-base">Endpoint</h3>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Base URL</label>
+                    <Input
+                      value={baseUrl}
+                      onChange={(e) => setBaseUrl(e.target.value)}
+                      placeholder={PROVIDER_URLS[provider] || 'https://api.openai.com/v1'}
+                      className="h-11 bg-background font-mono text-sm"
+                      autoComplete="off"
+                    />
+                    <p className="text-[11px] text-muted-foreground">Prepopulated from the provider docs. You can still override it.</p>
                   </div>
-                )}
+                </div>
 
-                {/* DEF-009 fix: OAuth providers get a placeholder button instead of key input */}
-                {isOAuth && (
-                  <div className="p-6 rounded-xl border border-border bg-card shadow-sm animate-in zoom-in-95">
-                    <h3 className="font-semibold mb-4 text-base">Authentication</h3>
-                    <div className="space-y-3">
-                      <Button variant="outline" className="w-full h-12 gap-3" disabled>
-                        <ExternalLink className="h-4 w-4" />
-                        Connect with OAuth (Desktop Only)
-                      </Button>
-                      <p className="text-[11px] text-muted-foreground">OAuth authentication is available in the desktop app. You can also paste an API key below as a fallback.</p>
-                      <Input
-                        type="password"
-                        value={apiKey}
-                        onChange={(e) => setApiKey(e.target.value)}
-                        placeholder="sk-... (optional fallback)"
-                        className="h-11 bg-background"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* DEF-008 fix: Only show API key for providers that need it */}
-                {needsKey && !isOAuth && (
+                {provider !== 'local' ? (
                   <div className="p-6 rounded-xl border border-border bg-card shadow-sm">
-                    <h3 className="font-semibold mb-4 text-base">API Credentials</h3>
+                    <h3 className="font-semibold mb-4 text-base">Authentication</h3>
                     <div className="space-y-2">
-                      <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Secret Key</label>
+                      <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">API Key</label>
                       <Input
                         type="password"
+                        autoComplete="off"
+                        name="hermes-api-key"
                         value={apiKey}
                         onChange={(e) => setApiKey(e.target.value)}
-                        placeholder="sk-..."
+                        placeholder="Paste your API key"
                         className="h-11 bg-background"
                       />
-                      <p className="text-[11px] text-muted-foreground">Keys are stored locally in your browser/app cache.</p>
+                      <p className="text-[11px] text-muted-foreground">OAuth is disabled for now. This uses direct API key authentication only.</p>
                     </div>
                   </div>
-                )}
-
-                {/* Informational note for local providers */}
-                {NO_KEY_PROVIDERS.includes(provider) && (
+                ) : (
                   <div className="p-4 rounded-xl border border-green-500/20 bg-green-500/5 text-sm text-green-600 dark:text-green-400 flex items-center gap-3">
                     <Check className="h-5 w-5 shrink-0" />
-                    <span>{provider === 'ollama' ? 'Ollama' : 'LM Studio'} runs locally — no API key required.</span>
+                    <span>Local uses your own compatible endpoint, for example Hermes, Ollama, or LM Studio.</span>
                   </div>
                 )}
-              </div>
-            </TabsContent>
 
-            <TabsContent value="backend" className="space-y-6 mt-8">
-              <div className="p-6 rounded-xl border border-border bg-card shadow-sm">
-                <h3 className="font-semibold mb-4 text-base">Connection Strategy</h3>
-                {/* DEF-001 fix: Use button-based selection instead of sr-only radio inputs */}
-                <div className="space-y-3" role="radiogroup" aria-label="Backend mode">
-                  {[
-                    { id: 'auto', label: 'Auto-detect', sub: 'Priority to local Hermes with direct fallback' },
-                    { id: 'external', label: 'External Backend', sub: 'Connect to a remote or managed Hermes instance' },
-                    { id: 'embedded', label: 'Direct Provider', sub: 'Bypass Hermes and talk directly to the AI service' },
-                  ].map((m) => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      role="radio"
-                      aria-checked={backendMode === m.id}
-                      onClick={() => setBackendMode(m.id)}
-                      className={cn(
-                        'w-full flex items-center gap-4 p-4 rounded-xl border cursor-pointer transition-all text-left',
-                        backendMode === m.id 
-                          ? 'border-primary bg-primary/[0.03] ring-1 ring-primary/20' 
-                          : 'border-border hover:bg-muted/30'
-                      )}
-                    >
-                      <div className={cn(
-                        "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors shrink-0",
-                        backendMode === m.id ? "border-primary" : "border-muted-foreground/30"
-                      )}>
-                        {backendMode === m.id && <div className="w-2.5 h-2.5 rounded-full bg-primary" />}
-                      </div>
-                      <div className="flex-1">
-                        <div className="text-sm font-bold">{m.label}</div>
-                        <div className="text-xs text-muted-foreground mt-0.5">{m.sub}</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {(backendMode === 'auto' || backendMode === 'external') && (
-                <div className="p-6 rounded-xl border border-border bg-card shadow-sm animate-in zoom-in-95">
-                  <h3 className="font-semibold mb-4 text-base">Backend Configuration</h3>
-                  <div className="flex gap-3">
-                    <div className="flex-1 space-y-2">
-                       <label className="text-[10px] font-bold text-muted-foreground uppercase">Endpoint URL</label>
-                       <Input
-                        value={backendMode === 'external' ? externalUrl : 'http://localhost:42424/v1'}
-                        onChange={(e) => setExternalUrl(e.target.value)}
-                        disabled={backendMode === 'auto'}
-                        className="h-11 bg-background font-mono text-sm"
-                      />
-                    </div>
-                    <div className="self-end pb-0.5">
-                      <Button 
-                        variant="outline" 
-                        onClick={handleTestConnection} 
-                        disabled={testingConnection}
-                        className="h-11 px-6 font-bold"
-                      >
-                        {testingConnection ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Ping'}
-                      </Button>
-                    </div>
-                  </div>
+                <div className="flex items-center gap-3">
+                  <Button variant="outline" onClick={handleTestConnection} disabled={testingConnection}>
+                    {testingConnection ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                    Test connection
+                  </Button>
                   {connectionResult && (
-                    <div className={cn(
-                      'mt-4 p-3 rounded-lg text-sm flex items-center gap-3 border', 
-                      connectionResult.success ? 'bg-green-500/10 text-green-600 border-green-500/20' : 'bg-destructive/10 text-destructive border-destructive/20'
-                    )}>
-                      {connectionResult.success ? <Check className="h-5 w-5" /> : <X className="h-5 w-5" />}
-                      <span className="font-medium">{connectionResult.message}</span>
+                    <div className={cn('text-sm', connectionResult.success ? 'text-green-600 dark:text-green-400' : 'text-destructive')}>
+                      {connectionResult.message}
                     </div>
                   )}
                 </div>
-              )}
+              </div>
             </TabsContent>
 
             <TabsContent value="agent" className="space-y-6 mt-8">
@@ -527,72 +542,7 @@ export default function SettingsPage({ onSave }) {
             </TabsContent>
           </Tabs>
 
-          <Separator className="my-10" />
-
-          <div className="p-8 rounded-2xl border border-border bg-muted/30 relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:scale-110 transition-transform">
-               <span className="text-8xl font-black">⚕</span>
             </div>
-            
-            <h3 className="font-bold text-lg mb-6 flex items-center gap-3">
-               Developer Console
-               <Badge className="bg-primary/10 text-primary border-none shadow-none text-[10px]">VER 1.0.0</Badge>
-            </h3>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Button 
-                variant="outline" 
-                className="justify-start h-12 px-5 gap-3 bg-card border-border/50 hover:border-primary/50 transition-all"
-                onClick={() => window.hermesDesktop?.openExternal?.('https://github.com/henryrocks7800/hermes-agent-desktop')}
-              >
-                <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center"><Github className="h-4 w-4" /></div>
-                <div className="text-left">
-                  <div className="text-xs font-bold">Open Source</div>
-                  <div className="text-[10px] text-muted-foreground">View main repository</div>
-                </div>
-              </Button>
-
-              <Button 
-                variant="outline" 
-                className="justify-start h-12 px-5 gap-3 bg-card border-border/50 hover:border-primary/50 transition-all"
-                onClick={handleCheckForUpdates}
-              >
-                <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center"><ExternalLink className="h-4 w-4" /></div>
-                <div className="text-left">
-                   <div className="text-xs font-bold">Release Log</div>
-                   <div className="text-[10px] text-muted-foreground">Check for UI updates</div>
-                </div>
-              </Button>
-
-              <Button 
-                variant="secondary" 
-                className="justify-start h-12 px-5 gap-3 border border-border/20 shadow-sm"
-                onClick={() => setRerunWizardDialog(true)}
-              >
-                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary"><RotateCcw className="h-4 w-4" /></div>
-                <div className="text-left">
-                   <div className="text-xs font-bold">Reset Wizard</div>
-                   <div className="text-[10px] text-muted-foreground">Re-run setup guide</div>
-                </div>
-              </Button>
-
-              <Button 
-                variant="secondary" 
-                className="justify-start h-12 px-5 gap-3 border border-border/20 shadow-sm disabled:opacity-50"
-                onClick={handleUpdateBackend}
-                disabled={!isDesktop}
-              >
-                 <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-                    {updating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                 </div>
-                 <div className="text-left">
-                   <div className="text-xs font-bold">Update Engine</div>
-                   <div className="text-[10px] text-muted-foreground">Sync local backend</div>
-                 </div>
-              </Button>
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* Persistent Save Bar */}

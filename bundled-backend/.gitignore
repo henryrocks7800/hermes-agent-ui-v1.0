@@ -1,0 +1,5 @@
+# Keep docs and templates in git, ignore actual backend payloads by default.
+*
+!.gitignore
+!README.md
+!backend-manifest.example.json

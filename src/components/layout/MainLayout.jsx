@@ -1,20 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { storage, KEYS } from '@/lib/storage'
+import { PROVIDER_URLS } from '@/lib/commands'
 import Sidebar from './Sidebar.jsx'
 import ChatPage from '../chat/ChatPage.jsx'
 import ThreadsPage from '../pages/ThreadsPage.jsx'
-import SkillsPage from '../pages/SkillsPage.jsx'
-import AutomationsPage from '../pages/AutomationsPage.jsx'
 import SettingsPage from '../pages/SettingsPage.jsx'
-
-const PROVIDER_URLS = {
-  'openai': 'https://api.openai.com/v1',
-  'anthropic': 'https://api.anthropic.com/v1',
-  'openrouter': 'https://openrouter.ai/api/v1',
-  'gemini': 'https://generativelanguage.googleapis.com/v1beta',
-  'ollama': 'http://localhost:11434/v1',
-  'lmstudio': 'http://localhost:1234/v1',
-}
 
 export default function MainLayout() {
   const [activePage, setActivePage] = useState('chat')
@@ -25,35 +15,20 @@ export default function MainLayout() {
   const [activeThreadId, setActiveThreadId] = useState(() => storage.get(KEYS.ACTIVE_THREAD, null))
   const [connectionStatus, setConnectionStatus] = useState('connecting')
   
-  // Refined config state — use || to treat empty string as falsy (DEF-003)
+  // Refined config state
   const [sessionParams, setSessionParams] = useState(() => ({
-    mode: storage.get(KEYS.BACKEND_MODE, 'auto') || 'auto',
-    provider: storage.get(KEYS.PROVIDER, 'openai') || 'openai',
+    provider: storage.get(KEYS.PROVIDER, 'local') || 'local',
     customBase: storage.get(KEYS.BASE_URL, ''),
-    extUrl: storage.get(KEYS.EXTERNAL_URL, ''),
     model: storage.get(KEYS.MODEL, '') || '',
     apiKey: storage.get(KEYS.API_KEY, ''),
   }))
 
   const effectiveSettings = useMemo(() => {
-    const { mode, provider, customBase, extUrl, model, apiKey } = sessionParams
+    const { provider, customBase, model, apiKey } = sessionParams
     
-    let url = 'http://localhost:42424/v1' // Default local Hermes
-    
-    // Logic: If user specifically wants Direct Provider, we MUST use the SaaS URL
-    if (mode === 'embedded') {
-      url = PROVIDER_URLS[provider] || customBase || url
-    } 
-    // Logic: If user wants External Hermes, use the specific IP they provided
-    else if (mode === 'external') {
-      url = extUrl || url
-    }
-    // Logic: Auto mode - tries local first
-    else {
-      url = 'http://localhost:42424/v1'
-    }
+    let url = customBase || PROVIDER_URLS[provider] || PROVIDER_URLS.local
 
-    return { baseUrl: url, model, apiKey, provider, mode }
+    return { baseUrl: url, model, apiKey, provider, mode: 'embedded' }
   }, [sessionParams])
 
   useEffect(() => {
@@ -74,19 +49,13 @@ export default function MainLayout() {
       const url = effectiveSettings.baseUrl
       try {
         let ok = false
-        if (window.hermesDesktop && window.hermesDesktop.checkBackendHealth) {
-          ok = await window.hermesDesktop.checkBackendHealth(url)
+        if (effectiveSettings.provider === 'local') {
+          try {
+            const res = await fetch(`${url.replace(/\/$/, '')}/models`, { method: 'GET', signal: AbortSignal.timeout(2000) })
+            ok = res.ok
+          } catch { ok = false }
         } else {
-          // If it is a SaaS provider, we usually don't have a /models endpoint we can reach without a key or CORS
-          // So we assume 'connected' if the URL is an official SaaS one
-          if (url.includes('openai.com') || url.includes('openrouter.ai') || url.includes('anthropic.com')) {
-            ok = true
-          } else {
-            try {
-              const res = await fetch(`${url.replace(/\/$/, '')}/models`, { method: 'GET', signal: AbortSignal.timeout(2000) })
-              ok = res.ok
-            } catch { ok = false }
-          }
+          ok = false
         }
         if (mounted) setConnectionStatus(ok ? 'connected' : 'disconnected')
       } catch (e) {
@@ -97,7 +66,7 @@ export default function MainLayout() {
     checkHealth()
     const interval = setInterval(checkHealth, 30000)
     return () => { mounted = false; clearInterval(interval) }
-  }, [effectiveSettings.baseUrl])
+  }, [effectiveSettings.baseUrl, effectiveSettings.provider])
 
   const handleNewThread = () => {
     setActiveThreadId(null)
@@ -111,10 +80,8 @@ export default function MainLayout() {
     
     // Use nullish coalescing to allow empty strings (e.g., blank apiKey is valid for local providers)
     setSessionParams({
-      mode: newSet[KEYS.BACKEND_MODE] ?? storage.get(KEYS.BACKEND_MODE) ?? 'auto',
-      provider: newSet[KEYS.PROVIDER] ?? storage.get(KEYS.PROVIDER) ?? 'openai',
+      provider: newSet[KEYS.PROVIDER] ?? storage.get(KEYS.PROVIDER) ?? 'local',
       customBase: newSet[KEYS.BASE_URL] ?? storage.get(KEYS.BASE_URL) ?? '',
-      extUrl: newSet[KEYS.EXTERNAL_URL] ?? storage.get(KEYS.EXTERNAL_URL) ?? '',
       model: newSet[KEYS.MODEL] ?? storage.get(KEYS.MODEL) ?? '',
       apiKey: newSet[KEYS.API_KEY] ?? storage.get(KEYS.API_KEY) ?? '',
     })
@@ -160,8 +127,6 @@ export default function MainLayout() {
             }}
           />
         )}
-        {activePage === 'skills' && <SkillsPage />}
-        {activePage === 'automations' && <AutomationsPage />}
         {activePage === 'settings' && <SettingsPage onSave={handleSaveSettings} />}
       </main>
     </div>
