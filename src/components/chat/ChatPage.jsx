@@ -17,6 +17,17 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
   const [runtimeEvents, setRuntimeEvents] = useState([])
   const scrollAreaRef = useRef(null)
   const currentResponseRef = useRef('')
+  const runtimeEventsRef = useRef([])
+
+  const appendRuntimeEvent = (event) => {
+    runtimeEventsRef.current = [...runtimeEventsRef.current, event]
+    setRuntimeEvents(runtimeEventsRef.current)
+  }
+
+  const resetRuntimeEvents = (initial = []) => {
+    runtimeEventsRef.current = initial
+    setRuntimeEvents(initial)
+  }
 
   const { baseUrl, model, apiKey, provider, mode } = settings
 
@@ -51,7 +62,7 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
     setCurrentResponse('')
     setToolCalls([])
     setIsThinking(false)
-    setRuntimeEvents([
+    resetRuntimeEvents([
       { type: 'status', text: 'Initializing Hermes agent...' },
       { type: 'meta', text: `Provider: ${provider} · Model: ${model || 'none selected'}` },
       { type: 'meta', text: `Endpoint: ${baseUrl}` },
@@ -71,7 +82,7 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
       onUpdateThread(currentThread)
     }
 
-    const projectFolder = storage.get('hermes.projectFolder', '')
+    const projectFolder = storage.get('projectFolder', '')
     const systemPrompt = `You are Hermes, an autonomous software engineering agent.\nWork agentically, by planning changes and producing filesystem-oriented work for the selected project folder when appropriate.\nProject folder: ${projectFolder || 'not selected'}.\nDo not dump large implementation files into chat unless explicitly asked.\nBe concise, direct, and action-oriented.`
     const apiMessages = [
       { role: 'system', content: systemPrompt },
@@ -83,19 +94,19 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
         role: 'assistant',
         content: currentResponseRef.current,
         toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-        runtimeEvents: [...runtimeEvents],
+        runtimeEvents: [...runtimeEventsRef.current],
         timestamp: Date.now(),
       }
       const finalMessages = [...updatedMessages, assistantMessage]
       setMessages(finalMessages)
-      
+
       if (currentThread) {
         onUpdateThread({ ...currentThread, messages: finalMessages })
       }
 
       currentResponseRef.current = ''
       setCurrentResponse('')
-      setRuntimeEvents([])
+      resetRuntimeEvents([])
       setIsStreaming(false)
     }
 
@@ -110,7 +121,7 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
         timestamp: Date.now(),
         isError: true,
         runtimeEvents: [
-          ...runtimeEvents,
+          ...runtimeEventsRef.current,
           { type: 'warning', text: 'The request failed before Hermes could complete the turn.' },
         ],
         debug: { baseUrl, provider, model, mode, hasKey: !!apiKey }
@@ -125,60 +136,104 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
       setIsStreaming(false)
     }
 
+    // Pull behaviour settings live from storage so the user does not need to
+    // re-save Settings to make them take effect on the next run.
+    const maxTurns = storage.get('maxTurns', 90)
+    const reasoningEffort = storage.get('reasoningEffort', 'medium')
+    const toolProgress = storage.get('toolProgress', 'all')
+
+    const runAgentEnv = {
+      HERMES_MODEL: model || '',
+      HERMES_BASE_URL: baseUrl || '',
+      HERMES_PROVIDER: provider || '',
+      HERMES_API_KEY: apiKey || '',
+      HERMES_MAX_TURNS: String(maxTurns || ''),
+      HERMES_REASONING_EFFORT: reasoningEffort || '',
+      HERMES_TOOL_PROGRESS: toolProgress || '',
+      OPENAI_BASE_URL: baseUrl,
+      OPENROUTER_API_KEY: provider === 'openrouter' ? apiKey : undefined,
+      ANTHROPIC_API_KEY: provider === 'anthropic' ? apiKey : undefined,
+      OPENAI_API_KEY: provider === 'openai' ? apiKey : (provider === 'local' ? 'local-no-auth' : undefined),
+    }
+
+    const emitTranscript = (data) => {
+      setIsThinking(false)
+      if (!data) return
+      data.split(/\r?\n/).forEach((line) => {
+        if (line.trim()) appendRuntimeEvent({ type: 'tool', text: line })
+      })
+    }
+
+    const finalizeAgentTranscript = () => {
+      if (!currentResponseRef.current) {
+        const rawTranscript = runtimeEventsRef.current
+          .map((event) => event.text)
+          .filter(Boolean)
+          .join('\n')
+          .trim()
+        if (rawTranscript) {
+          currentResponseRef.current = '```\n' + rawTranscript + '\n```'
+        } else {
+          currentResponseRef.current = 'Task completed. See runtime logs for details.'
+        }
+        setCurrentResponse(currentResponseRef.current)
+      }
+    }
+
+    const bridgeUrl = (typeof window !== 'undefined' && window.__HERMES_BRIDGE_URL) || 'http://127.0.0.1:42500'
+    let bridgeAvailable = false
+    if (!window.hermesDesktop?.runAgent) {
+      try {
+        const healthRes = await fetch(`${bridgeUrl}/health`, { method: 'GET', signal: AbortSignal.timeout(500) })
+        bridgeAvailable = healthRes.ok
+      } catch { bridgeAvailable = false }
+    }
+
     try {
       if (window.hermesDesktop?.runAgent) {
-        // Clear previous event listeners for this run
-        window.hermesDesktop.onAgentStdout((data) => {
-          setIsThinking(false)
-          
-          // Hermes uses specific marker tokens for assistant replies in single-query mode
-          if (data.includes('▌')) {
-            const parts = data.split('▌')
-            currentResponseRef.current += parts.pop()
-            setCurrentResponse(currentResponseRef.current)
-          } else if (data.includes('│ ') || data.includes('└─')) {
-            // These are runtime events / logs from Hermes
-            setRuntimeEvents(prev => [...prev, { type: 'tool', text: data.trim() }])
-          } else {
-            setRuntimeEvents(prev => [...prev, { type: 'tool', text: data.trim() }])
-          }
-        })
-        
-        window.hermesDesktop.onAgentStderr((data) => {
-          setRuntimeEvents(prev => [...prev, { type: 'warning', text: data.trim() }])
-        })
-
-        const env = {
-          OPENAI_BASE_URL: baseUrl,
-          OPENROUTER_API_KEY: provider === 'openrouter' ? apiKey : undefined,
-          ANTHROPIC_API_KEY: provider === 'anthropic' ? apiKey : undefined,
-          OPENAI_API_KEY: provider === 'openai' ? apiKey : undefined,
-        }
+        window.hermesDesktop.onAgentStdout((data) => emitTranscript(data))
+        window.hermesDesktop.onAgentStderr((data) => emitTranscript(data))
 
         const res = await window.hermesDesktop.runAgent({
           query: content,
           cwd: projectFolder,
-          env,
+          env: runAgentEnv,
           sessionId: currentThread.id
         })
-        
+
         if (res.code !== 0) {
           throw new Error(`Hermes agent exited with code ${res.code}`)
         }
-        
-        // If the CLI transcript did not yield a parsed assistant message, preserve the raw runtime transcript.
-        if (!currentResponseRef.current) {
-          const rawTranscript = runtimeEvents
-            .map((event) => event.text)
-            .filter(Boolean)
-            .join('\n')
-            .trim()
-          currentResponseRef.current = rawTranscript || 'Task completed. See runtime logs for details.'
-          setCurrentResponse(currentResponseRef.current)
-        }
-        
+
+        finalizeAgentTranscript()
         onDone()
-        
+
+      } else if (bridgeAvailable) {
+        appendRuntimeEvent({ type: 'meta', text: `Bridge: ${bridgeUrl}` })
+        const bridgeRes = await fetch(`${bridgeUrl}/agent/run`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: content, cwd: projectFolder, env: runAgentEnv }),
+        })
+        if (!bridgeRes.ok || !bridgeRes.body) {
+          throw new Error(`bridge HTTP ${bridgeRes.status}`)
+        }
+        const reader = bridgeRes.body.getReader()
+        const decoder = new TextDecoder('utf-8')
+        let buffer = ''
+        while (true) {
+          const { value, done } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split(/\r?\n/)
+          buffer = lines.pop() || ''
+          lines.forEach((line) => { if (line.trim()) appendRuntimeEvent({ type: 'tool', text: line }) })
+        }
+        if (buffer.trim()) appendRuntimeEvent({ type: 'tool', text: buffer })
+
+        finalizeAgentTranscript()
+        onDone()
+
       } else {
         await streamChat({
           baseUrl,
@@ -344,7 +399,7 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
           ) : (
             messages.map((msg, i) => renderMessage(msg, i))
           )}
-          {!thread && !storage.get('hermes.projectFolder', '') && (
+          {!thread && !storage.get('projectFolder', '') && (
             <div className="px-4 pt-2">
               <div className="mx-auto max-w-4xl rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 shadow-sm">
                 <div className="flex items-start gap-3">

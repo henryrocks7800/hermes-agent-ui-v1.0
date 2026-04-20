@@ -42,7 +42,7 @@ function createWindow() {
 
   mainWindow.loadURL(resolveRenderer())
 
-  if (isDev) mainWindow.webContents.openDevTools()
+  if (isDev && !process.env.ELECTRON_DISABLE_DEVTOOLS) mainWindow.webContents.openDevTools()
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url)

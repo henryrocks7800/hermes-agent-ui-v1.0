@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Input } from '@/components/ui/input'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { getCommandCompletions, getContextCompletions, PROVIDER_MODELS } from '@/lib/commands'
 import { storage, KEYS } from '@/lib/storage'
@@ -11,7 +13,10 @@ import { Send, ChevronDown, Paperclip, FolderOpen, Command, AtSign } from 'lucid
 
 export default function Composer({ onSendMessage, disabled, model, onModelChange, provider, workspaceRequired = false }) {
   const [value, setValue] = useState('')
-  const [projectFolder, setProjectFolder] = useState(() => storage.get('hermes.projectFolder', ''))
+  const [projectFolder, setProjectFolder] = useState(() => storage.get('projectFolder', ''))
+  const [folderPickerOpen, setFolderPickerOpen] = useState(false)
+  const [folderPickerValue, setFolderPickerValue] = useState('')
+  const [recentFolders, setRecentFolders] = useState(() => storage.get('recentProjectFolders', []))
   const [showCommandMenu, setShowCommandMenu] = useState(false)
   const [showContextMenu, setShowContextMenu] = useState(false)
   const [commandFilter, setCommandFilter] = useState('')
@@ -203,20 +208,31 @@ export default function Composer({ onSendMessage, disabled, model, onModelChange
     }
   }
 
+  const commitFolderSelection = (folder) => {
+    const trimmed = (folder || '').trim()
+    if (!trimmed) return
+    setProjectFolder(trimmed)
+    storage.set('projectFolder', trimmed)
+    const next = [trimmed, ...recentFolders.filter((f) => f !== trimmed)].slice(0, 6)
+    setRecentFolders(next)
+    storage.set('recentProjectFolders', next)
+  }
+
   const handleSelectFolder = async () => {
+    // Electron native picker — preferred path when available.
     if (window.hermesDesktop?.openFolder) {
       const folder = await window.hermesDesktop.openFolder()
-      if (folder) {
-        setProjectFolder(folder)
-        storage.set('hermes.projectFolder', folder)
-      }
-    } else {
-      const folder = prompt('Enter absolute path to workspace folder:')
-      if (folder) {
-        setProjectFolder(folder)
-        storage.set('hermes.projectFolder', folder)
-      }
+      if (folder) commitFolderSelection(folder)
+      return
     }
+    // Browser path: open the styled in-app dialog instead of window.prompt().
+    setFolderPickerValue(projectFolder || '')
+    setFolderPickerOpen(true)
+  }
+
+  const handleFolderPickerSubmit = () => {
+    commitFolderSelection(folderPickerValue)
+    setFolderPickerOpen(false)
   }
 
   return (
@@ -352,6 +368,51 @@ export default function Composer({ onSendMessage, disabled, model, onModelChange
           </Button>
         </div>
       </div>
+
+      <Dialog open={folderPickerOpen} onOpenChange={setFolderPickerOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Select workspace folder</DialogTitle>
+            <DialogDescription>
+              Hermes will read and write files here. Paste an absolute path — Windows
+              paths like <code className="px-1 rounded bg-muted">C:\projects\app</code> are
+              translated automatically.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Input
+              autoFocus
+              value={folderPickerValue}
+              onChange={(e) => setFolderPickerValue(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleFolderPickerSubmit() } }}
+              placeholder="C:\projects\my-app  or  /home/me/projects/my-app"
+              className="font-mono text-sm"
+            />
+            {recentFolders.length > 0 && (
+              <div className="space-y-1">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Recent</div>
+                <div className="flex flex-col gap-1 max-h-40 overflow-auto">
+                  {recentFolders.map((f) => (
+                    <button
+                      key={f}
+                      type="button"
+                      onClick={() => setFolderPickerValue(f)}
+                      className="text-left text-xs font-mono px-2 py-1.5 rounded border border-transparent hover:bg-accent hover:border-border truncate"
+                      title={f}
+                    >
+                      {f}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setFolderPickerOpen(false)}>Cancel</Button>
+            <Button onClick={handleFolderPickerSubmit} disabled={!folderPickerValue.trim()}>Use this folder</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -39,6 +39,8 @@ export default function SettingsPage({ onSave }) {
   
   const [testingConnection, setTestingConnection] = useState(false)
   const [connectionResult, setConnectionResult] = useState(null)
+  // Per-provider connection status: 'connected' | 'failed' | 'testing' | undefined
+  const [providerStatus, setProviderStatus] = useState({})
   const [showSaveToast, setShowSaveToast] = useState(false)
   const [rerunWizardDialog, setRerunWizardDialog] = useState(false)
   
@@ -109,38 +111,106 @@ export default function SettingsPage({ onSave }) {
     }
   }
 
-  const handleTestConnection = async () => {
+  // Map a thrown fetch/HTTP error into something a human can act on.
+  const explainConnectionError = (err, provider, url) => {
+    const msg = (err && err.message) || ''
+    const name = (err && err.name) || ''
+    if (name === 'AbortError' || /timeout/i.test(msg)) {
+      return `Timed out reaching ${url}. The endpoint did not respond within a few seconds — check it is running and reachable.`
+    }
+    if (name === 'TypeError' && /fetch/i.test(msg)) {
+      // Browser fetch's generic "Failed to fetch" — try to be specific.
+      if (provider === 'local') {
+        return `Could not reach the local endpoint at ${url}. Is your local LLM server (Ollama, LM Studio, Hermes, etc.) running and listening on that URL? If you are running this in a browser on Windows but the server is on WSL (or vice versa), use the host's IP, not localhost.`
+      }
+      return `Could not reach ${url}. The browser blocked the request or the host is unreachable. This is usually a CORS error (the provider does not allow direct browser calls), a DNS / network failure, or the URL is wrong.`
+    }
+    if (/HTTP 401/.test(msg) || /unauthor/i.test(msg) || /invalid_api_key/i.test(msg)) {
+      return `Authentication failed (HTTP 401). The API key was rejected by the provider — double-check that you copied it in full and that it is active.`
+    }
+    if (/HTTP 403/.test(msg)) {
+      return `Forbidden (HTTP 403). The key may be valid but does not have access to this endpoint or model.`
+    }
+    if (/HTTP 404/.test(msg)) {
+      return `Not found (HTTP 404). The base URL probably does not point at an OpenAI-compatible /models route — check the URL.`
+    }
+    if (/HTTP 429/.test(msg)) {
+      return `Rate limited (HTTP 429). The provider says you are sending too many requests — wait a bit and try again.`
+    }
+    if (/HTTP 5\d\d/.test(msg)) {
+      return `Provider returned a server error: ${msg}. Try again shortly.`
+    }
+    return msg || 'Connection failed for an unknown reason.'
+  }
+
+  // Run the connection check. If `silent`, we update `providerStatus` only
+  // (used for auto-checks on mount / provider switch). If not silent, we
+  // also surface the result/error next to the Test connection button.
+  const runConnectionCheck = async ({ silent = false } = {}) => {
     const url = (baseUrl || PROVIDER_URLS[provider] || '').trim()
-    setTestingConnection(true)
-    setConnectionResult(null)
+    if (!silent) {
+      setTestingConnection(true)
+      setConnectionResult(null)
+    }
+    setProviderStatus((s) => ({ ...s, [provider]: 'testing' }))
 
     try {
       if (!url) throw new Error('Missing base URL')
 
+      let response
       if (provider === 'local') {
-        const response = await fetch(`${url.replace(/\/$/, '')}/models`, {
+        response = await fetch(`${url.replace(/\/$/, '')}/models`, {
           method: 'GET',
           signal: AbortSignal.timeout(3000),
         })
-        if (!response.ok) throw new Error(`HTTP ${response.status}`)
-        setConnectionResult({ success: true, message: 'Local endpoint responded successfully.' })
       } else {
         if (!apiKey.trim()) throw new Error('Enter an API key before testing this provider.')
-        const response = await fetch(`${url.replace(/\/$/, '')}/models`, {
+        response = await fetch(`${url.replace(/\/$/, '')}/models`, {
           method: 'GET',
           headers: { Authorization: `Bearer ${apiKey.trim()}` },
           signal: AbortSignal.timeout(5000),
         })
+      }
+
+      if (!response.ok) {
         const body = await response.text().catch(() => '')
-        if (!response.ok) throw new Error(body || `HTTP ${response.status}`)
-        setConnectionResult({ success: true, message: 'Provider credentials look valid.' })
+        const trimmed = body && body.length < 240 ? ` — ${body.replace(/\s+/g, ' ').trim()}` : ''
+        throw new Error(`HTTP ${response.status}${trimmed}`)
+      }
+
+      setProviderStatus((s) => ({ ...s, [provider]: 'connected' }))
+      if (!silent) {
+        setConnectionResult({
+          success: true,
+          message: provider === 'local' ? 'Local endpoint responded successfully.' : 'Provider credentials look valid.',
+        })
       }
     } catch (err) {
-      setConnectionResult({ success: false, message: err.message || 'Connection failed' })
+      setProviderStatus((s) => ({ ...s, [provider]: 'failed' }))
+      if (!silent) {
+        setConnectionResult({ success: false, message: explainConnectionError(err, provider, url) })
+      }
     } finally {
-      setTestingConnection(false)
+      if (!silent) setTestingConnection(false)
     }
   }
+
+  const handleTestConnection = () => runConnectionCheck({ silent: false })
+
+  // Auto-check the current provider whenever its config changes enough to
+  // make the previous result stale. Debounced so the user can finish typing.
+  useEffect(() => {
+    const url = (baseUrl || PROVIDER_URLS[provider] || '').trim()
+    if (!url) return
+    if (provider !== 'local' && !apiKey.trim()) {
+      // No key yet — clear any prior status so we don't show a stale tick.
+      setProviderStatus((s) => ({ ...s, [provider]: undefined }))
+      return
+    }
+    const handle = setTimeout(() => { runConnectionCheck({ silent: true }) }, 600)
+    return () => clearTimeout(handle)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provider, baseUrl, apiKey])
 
   const handleRerunWizard = () => {
     storage.remove(KEYS.ONBOARDING_DONE)
@@ -210,17 +280,35 @@ export default function SettingsPage({ onSave }) {
                 <div className="p-6 rounded-xl border border-border bg-card shadow-sm">
                   <h3 className="font-semibold mb-4 text-base">AI Provider</h3>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {Object.keys(PROVIDER_MODELS).map((p) => (
-                      <Button
-                        key={p}
-                        variant={provider === p ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => handleProviderChange(p)}
-                        className="justify-start h-10 px-4"
-                      >
-                        {PROVIDER_LABELS[p] || p}
-                      </Button>
-                    ))}
+                    {Object.keys(PROVIDER_MODELS).map((p) => {
+                      const status = providerStatus[p]
+                      return (
+                        <Button
+                          key={p}
+                          variant={provider === p ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => handleProviderChange(p)}
+                          className="justify-between h-10 px-4 gap-2"
+                          title={
+                            status === 'connected' ? 'Connected'
+                            : status === 'failed' ? 'Connection failed — check credentials / URL'
+                            : status === 'testing' ? 'Testing connection…'
+                            : 'Connection not yet tested'
+                          }
+                        >
+                          <span className="truncate">{PROVIDER_LABELS[p] || p}</span>
+                          {status === 'connected' ? (
+                            <Check className="h-4 w-4 shrink-0 text-green-500" />
+                          ) : status === 'failed' ? (
+                            <X className="h-4 w-4 shrink-0 text-destructive" />
+                          ) : status === 'testing' ? (
+                            <Loader2 className="h-4 w-4 shrink-0 animate-spin opacity-70" />
+                          ) : (
+                            <span className="h-2 w-2 shrink-0 rounded-full bg-muted-foreground/40" />
+                          )}
+                        </Button>
+                      )
+                    })}
                   </div>
                 </div>
 
