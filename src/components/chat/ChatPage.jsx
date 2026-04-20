@@ -166,9 +166,14 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
           throw new Error(`Hermes agent exited with code ${res.code}`)
         }
         
-        // Ensure we record something if the response was empty
+        // If the CLI transcript did not yield a parsed assistant message, preserve the raw runtime transcript.
         if (!currentResponseRef.current) {
-          currentResponseRef.current = 'Task completed. See runtime logs for details.'
+          const rawTranscript = runtimeEvents
+            .map((event) => event.text)
+            .filter(Boolean)
+            .join('\n')
+            .trim()
+          currentResponseRef.current = rawTranscript || 'Task completed. See runtime logs for details.'
           setCurrentResponse(currentResponseRef.current)
         }
         
