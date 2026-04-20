@@ -6,11 +6,12 @@ async function seedOnboarded(page, overrides = {}) {
   await page.addInitScript((data) => {
     const entries = {
       'hermes.onboardingCompleted': true,
-      'hermes.provider': 'custom',
+      'hermes.provider': 'local',
       'hermes.model': 'qwen3-coder-30b',
       'hermes.baseUrl': 'http://127.0.0.1:42427/v1',
       'hermes.backendMode': 'embedded',
       'hermes.externalUrl': 'http://localhost:42424/v1',
+      'hermes.projectFolder': '/home/user/project',
       'hermes.maxTurns': 90,
       'hermes.reasoningEffort': 'medium',
       'hermes.toolProgress': 'all',
@@ -94,7 +95,7 @@ test.describe('Chat edge cases and persistence', () => {
   test('failed stream diagnostic shows attempted URL', async ({ page }) => {
     await openApp(page, {
       'hermes.baseUrl': 'http://127.0.0.1:9/v1',
-      'hermes.provider': 'custom',
+      'hermes.provider': 'local',
       'hermes.model': 'broken-local',
     })
     const composer = page.locator('textarea').first()
@@ -107,9 +108,18 @@ test.describe('Chat edge cases and persistence', () => {
   test('connection badge renders disconnected state for unreachable configured local model', async ({ page }) => {
     await openApp(page, {
       'hermes.baseUrl': LOCAL_MODEL_URL,
-      'hermes.provider': 'custom',
+      'hermes.provider': 'local',
       'hermes.model': 'qwen3-coder-30b',
     })
     await expect(page.getByText(/connected|disconnected/i).first()).toBeVisible()
+  })
+
+  test('send stays disabled until a workspace folder is present', async ({ page }) => {
+    await openApp(page, {
+      'hermes.projectFolder': '',
+    })
+    await page.locator('textarea').first().fill('Build me an app')
+    await expect(page.getByRole('button', { name: 'Send' })).toBeDisabled()
+    await expect(page.getByText('Workspace required')).toBeVisible()
   })
 })

@@ -6,6 +6,7 @@ const skipOnboarding = async (page) => {
     localStorage.setItem('hermes.provider', JSON.stringify('openai'))
     localStorage.setItem('hermes.model', JSON.stringify('gpt-4o'))
     localStorage.setItem('hermes.backendMode', JSON.stringify('embedded'))
+    localStorage.setItem('hermes.projectFolder', JSON.stringify('/home/user/project'))
   })
 }
 
@@ -47,16 +48,6 @@ test.describe('Main UI', () => {
   test('sidebar navigation — Threads', async ({ page }) => {
     await page.getByRole('button', { name: /threads/i }).click()
     await expect(page).toHaveScreenshot('page-threads.png', { maxDiffPixelRatio: 0.02 })
-  })
-
-  test('sidebar navigation — Skills', async ({ page }) => {
-    await page.getByRole('button', { name: 'Skills', exact: true }).click()
-    await expect(page).toHaveScreenshot('page-skills.png', { maxDiffPixelRatio: 0.02 })
-  })
-
-  test('sidebar navigation — Automations', async ({ page }) => {
-    await page.getByRole('button', { name: /automations/i }).click()
-    await expect(page).toHaveScreenshot('page-automations.png', { maxDiffPixelRatio: 0.02 })
   })
 
   test('sidebar navigation — Settings', async ({ page }) => {

@@ -7,10 +7,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn } from '@/lib/utils'
 import { getCommandCompletions, getContextCompletions, PROVIDER_MODELS } from '@/lib/commands'
 import { storage, KEYS } from '@/lib/storage'
-import { Send, ChevronDown, Paperclip, Command, AtSign } from 'lucide-react'
+import { Send, ChevronDown, Paperclip, FolderOpen, Command, AtSign } from 'lucide-react'
 
-export default function Composer({ onSendMessage, disabled, model, onModelChange, provider }) {
+export default function Composer({ onSendMessage, disabled, model, onModelChange, provider, workspaceRequired = false }) {
   const [value, setValue] = useState('')
+  const [projectFolder, setProjectFolder] = useState(() => storage.get('hermes.projectFolder', ''))
   const [showCommandMenu, setShowCommandMenu] = useState(false)
   const [showContextMenu, setShowContextMenu] = useState(false)
   const [commandFilter, setCommandFilter] = useState('')
@@ -189,7 +190,7 @@ export default function Composer({ onSendMessage, disabled, model, onModelChange
   }
 
   const handleSubmit = () => {
-    if (value.trim() && !disabled) {
+    if (value.trim() && !disabled && projectFolder) {
       onSendMessage(value)
       setValue('')
     }
@@ -202,6 +203,22 @@ export default function Composer({ onSendMessage, disabled, model, onModelChange
     }
   }
 
+  const handleSelectFolder = async () => {
+    if (window.hermesDesktop?.openFolder) {
+      const folder = await window.hermesDesktop.openFolder()
+      if (folder) {
+        setProjectFolder(folder)
+        storage.set('hermes.projectFolder', folder)
+      }
+    } else {
+      const folder = prompt('Enter absolute path to workspace folder:')
+      if (folder) {
+        setProjectFolder(folder)
+        storage.set('hermes.projectFolder', folder)
+      }
+    }
+  }
+
   return (
     <div className="border-t border-border bg-card p-4">
       <div className="max-w-4xl mx-auto space-y-3">
@@ -211,8 +228,8 @@ export default function Composer({ onSendMessage, disabled, model, onModelChange
             value={value}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
-            placeholder="Ask Hermes anything... Use / for commands, @ for context"
-            className="min-h-[80px] max-h-[200px] resize-none pr-12 focus-visible:ring-primary/20 transition-all"
+            placeholder={projectFolder ? "Tell Hermes what to do in this project... Use / for commands, @ for context" : "Select a project folder before sending a message"}
+            className={cn("min-h-[80px] max-h-[200px] resize-none pr-12 focus-visible:ring-primary/20 transition-all", workspaceRequired && !projectFolder && "border-amber-500/50 focus-visible:ring-amber-500/20")}
             disabled={disabled}
           />
           
@@ -302,7 +319,7 @@ export default function Composer({ onSendMessage, disabled, model, onModelChange
         </div>
 
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Select value={model} onValueChange={handleModelChange}>
               <SelectTrigger className="h-8 text-xs border-input shadow-sm w-[180px] bg-background hover:bg-accent transition-colors">
                 <SelectValue placeholder="Select model" />
@@ -313,11 +330,21 @@ export default function Composer({ onSendMessage, disabled, model, onModelChange
                 ))}
               </SelectContent>
             </Select>
+            <Button
+              variant="outline"
+              size="sm"
+              className={cn("h-8 text-xs border-input shadow-sm transition-colors", !projectFolder && "border-amber-500/50 text-amber-600")}
+              onClick={handleSelectFolder}
+            >
+              <FolderOpen className="h-3.5 w-3.5 mr-2" />
+              {projectFolder ? (projectFolder.split(/[/\\]/).pop() || 'Workspace') : 'Select Workspace'}
+            </Button>
+            {!projectFolder && <Badge variant="outline" className="h-8 text-[10px] text-amber-600 border-amber-500/50">Workspace required</Badge>}
           </div>
           <Button
             size="sm"
             onClick={handleSubmit}
-            disabled={disabled || !value.trim()}
+            disabled={disabled || !value.trim() || !projectFolder || !model}
             className="gap-2 px-4 shadow-sm"
           >
             <Send className="h-3.5 w-3.5" />

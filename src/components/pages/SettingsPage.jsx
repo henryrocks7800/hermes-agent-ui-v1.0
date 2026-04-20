@@ -8,22 +8,24 @@ import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { PROVIDER_MODELS } from '@/lib/commands'
-import { ArrowLeft, ArrowRight, Check, X, Loader2, ExternalLink, Github, RotateCcw, Download } from 'lucide-react'
+import { PROVIDER_MODELS, PROVIDER_URLS } from '@/lib/commands'
+import { Check, X, Loader2, ExternalLink, Github, RotateCcw, Download } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-// Providers that use OAuth — no API key field, show OAuth placeholder
-const OAUTH_PROVIDERS = ['openai-codex', 'copilot']
-// Providers that don't need an API key (local runners)
-const NO_KEY_PROVIDERS = ['ollama', 'lmstudio']
-// Providers that need a base URL input on Model tab
-const BASE_URL_PROVIDERS = ['ollama', 'lmstudio', 'custom']
+const PROVIDER_LABELS = {
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  openrouter: 'OpenRouter',
+  gemini: 'Google Gemini',
+  copilot: 'GitHub Copilot',
+  local: 'Local',
+}
 
 export default function SettingsPage({ onSave }) {
   const [provider, setProvider] = useState(() => storage.get(KEYS.PROVIDER, '') || 'openai')
   const [model, setModel] = useState(() => storage.get(KEYS.MODEL, ''))
   const [apiKey, setApiKey] = useState(() => storage.get(KEYS.API_KEY, ''))
-  const [baseUrl, setBaseUrl] = useState(() => storage.get(KEYS.BASE_URL, 'http://localhost:42424/v1'))
+  const [baseUrl, setBaseUrl] = useState(() => storage.get(KEYS.BASE_URL, PROVIDER_URLS[storage.get(KEYS.PROVIDER, '') || 'openai'] || PROVIDER_URLS.openai))
   const [backendMode, setBackendMode] = useState(() => storage.get(KEYS.BACKEND_MODE, 'auto'))
   const [externalUrl, setExternalUrl] = useState(() => storage.get(KEYS.EXTERNAL_URL, 'http://localhost:42424/v1'))
   const [maxTurns, setMaxTurns] = useState(() => storage.get(KEYS.MAX_TURNS, 90))
@@ -75,11 +77,12 @@ export default function SettingsPage({ onSave }) {
   }
 
   const doSave = (modelToSave) => {
+    const normalizedBaseUrl = baseUrl.trim() || PROVIDER_URLS[provider] || PROVIDER_URLS.openai
     onSave({
       [KEYS.PROVIDER]: provider,
       [KEYS.MODEL]: modelToSave,
-      [KEYS.API_KEY]: apiKey,
-      [KEYS.BASE_URL]: baseUrl,
+      [KEYS.API_KEY]: apiKey.trim(),
+      [KEYS.BASE_URL]: normalizedBaseUrl,
       [KEYS.BACKEND_MODE]: backendMode,
       [KEYS.EXTERNAL_URL]: externalUrl,
       [KEYS.MAX_TURNS]: maxTurns,
@@ -96,26 +99,42 @@ export default function SettingsPage({ onSave }) {
     setTimeout(() => setShowSaveToast(false), 3000)
   }
 
+  const handleProviderChange = (nextProvider) => {
+    setProvider(nextProvider)
+    setBaseUrl(PROVIDER_URLS[nextProvider] || '')
+    setApiKey('')
+    setConnectionResult(null)
+    if (model && !(PROVIDER_MODELS[nextProvider] || []).includes(model)) {
+      setModel(PROVIDER_MODELS[nextProvider]?.[0] || '')
+    }
+  }
+
   const handleTestConnection = async () => {
-    const url = backendMode === 'external' ? externalUrl : 'http://localhost:42424/v1'
+    const url = (baseUrl || PROVIDER_URLS[provider] || '').trim()
     setTestingConnection(true)
     setConnectionResult(null)
 
     try {
-      let ok = false
-      if (window.hermesDesktop?.checkBackendHealth) {
-        ok = await window.hermesDesktop.checkBackendHealth(url)
-      } else {
+      if (!url) throw new Error('Missing base URL')
+
+      if (provider === 'local') {
         const response = await fetch(`${url.replace(/\/$/, '')}/models`, {
           method: 'GET',
           signal: AbortSignal.timeout(3000),
         })
-        ok = response.ok
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        setConnectionResult({ success: true, message: 'Local endpoint responded successfully.' })
+      } else {
+        if (!apiKey.trim()) throw new Error('Enter an API key before testing this provider.')
+        const response = await fetch(`${url.replace(/\/$/, '')}/models`, {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${apiKey.trim()}` },
+          signal: AbortSignal.timeout(5000),
+        })
+        const body = await response.text().catch(() => '')
+        if (!response.ok) throw new Error(body || `HTTP ${response.status}`)
+        setConnectionResult({ success: true, message: 'Provider credentials look valid.' })
       }
-      
-      setConnectionResult(ok 
-        ? { success: true, message: 'Connected to Hermes backend!' } 
-        : { success: false, message: 'Backend unreachable. Check URL or firewall.' })
     } catch (err) {
       setConnectionResult({ success: false, message: err.message || 'Connection failed' })
     } finally {
@@ -157,9 +176,6 @@ export default function SettingsPage({ onSave }) {
   }
 
   const isDesktop = !!window.hermesDesktop?.isDesktop
-  const isOAuth = OAUTH_PROVIDERS.includes(provider)
-  const needsKey = !NO_KEY_PROVIDERS.includes(provider) && !isOAuth
-  const needsBaseUrl = BASE_URL_PROVIDERS.includes(provider)
 
   return (
     <div className="h-full flex flex-col relative bg-background animate-in fade-in duration-300">
@@ -199,10 +215,10 @@ export default function SettingsPage({ onSave }) {
                         key={p}
                         variant={provider === p ? 'default' : 'outline'}
                         size="sm"
-                        onClick={() => { setProvider(p); setModel('') }}
+                        onClick={() => handleProviderChange(p)}
                         className="justify-start h-10 px-4"
                       >
-                        {p}
+                        {PROVIDER_LABELS[p] || p}
                       </Button>
                     ))}
                   </div>
@@ -239,69 +255,56 @@ export default function SettingsPage({ onSave }) {
                   )}
                 </div>
 
-                {/* DEF-002 fix: Base URL input for custom/ollama/lmstudio */}
-                {needsBaseUrl && (
-                  <div className="p-6 rounded-xl border border-border bg-card shadow-sm animate-in zoom-in-95">
-                    <h3 className="font-semibold mb-4 text-base">API Base URL</h3>
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Endpoint</label>
-                      <Input
-                        value={baseUrl}
-                        onChange={(e) => setBaseUrl(e.target.value)}
-                        placeholder={provider === 'ollama' ? 'http://localhost:11434/v1' : provider === 'lmstudio' ? 'http://localhost:1234/v1' : 'https://your-api.example.com/v1'}
-                        className="h-11 bg-background font-mono text-sm"
-                      />
-                      <p className="text-[11px] text-muted-foreground">The OpenAI-compatible API endpoint for this provider.</p>
-                    </div>
+                <div className="p-6 rounded-xl border border-border bg-card shadow-sm animate-in zoom-in-95">
+                  <h3 className="font-semibold mb-4 text-base">Endpoint</h3>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Base URL</label>
+                    <Input
+                      value={baseUrl}
+                      onChange={(e) => setBaseUrl(e.target.value)}
+                      placeholder={PROVIDER_URLS[provider] || 'https://api.openai.com/v1'}
+                      className="h-11 bg-background font-mono text-sm"
+                      autoComplete="off"
+                    />
+                    <p className="text-[11px] text-muted-foreground">Prepopulated from the provider docs. You can still override it.</p>
                   </div>
-                )}
+                </div>
 
-                {/* DEF-009 fix: OAuth providers get a placeholder button instead of key input */}
-                {isOAuth && (
-                  <div className="p-6 rounded-xl border border-border bg-card shadow-sm animate-in zoom-in-95">
-                    <h3 className="font-semibold mb-4 text-base">Authentication</h3>
-                    <div className="space-y-3">
-                      <Button variant="outline" className="w-full h-12 gap-3" disabled>
-                        <ExternalLink className="h-4 w-4" />
-                        Connect with OAuth (Desktop Only)
-                      </Button>
-                      <p className="text-[11px] text-muted-foreground">OAuth authentication is available in the desktop app. You can also paste an API key below as a fallback.</p>
-                      <Input
-                        type="password"
-                        value={apiKey}
-                        onChange={(e) => setApiKey(e.target.value)}
-                        placeholder="sk-... (optional fallback)"
-                        className="h-11 bg-background"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* DEF-008 fix: Only show API key for providers that need it */}
-                {needsKey && !isOAuth && (
+                {provider !== 'local' ? (
                   <div className="p-6 rounded-xl border border-border bg-card shadow-sm">
-                    <h3 className="font-semibold mb-4 text-base">API Credentials</h3>
+                    <h3 className="font-semibold mb-4 text-base">Authentication</h3>
                     <div className="space-y-2">
-                      <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Secret Key</label>
+                      <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">API Key</label>
                       <Input
                         type="password"
+                        autoComplete="off"
+                        name="hermes-api-key"
                         value={apiKey}
                         onChange={(e) => setApiKey(e.target.value)}
-                        placeholder="sk-..."
+                        placeholder="Paste your API key"
                         className="h-11 bg-background"
                       />
-                      <p className="text-[11px] text-muted-foreground">Keys are stored locally in your browser/app cache.</p>
+                      <p className="text-[11px] text-muted-foreground">OAuth is disabled for now. This uses direct API key authentication only.</p>
                     </div>
                   </div>
-                )}
-
-                {/* Informational note for local providers */}
-                {NO_KEY_PROVIDERS.includes(provider) && (
+                ) : (
                   <div className="p-4 rounded-xl border border-green-500/20 bg-green-500/5 text-sm text-green-600 dark:text-green-400 flex items-center gap-3">
                     <Check className="h-5 w-5 shrink-0" />
-                    <span>{provider === 'ollama' ? 'Ollama' : 'LM Studio'} runs locally — no API key required.</span>
+                    <span>Local uses your own compatible endpoint, for example Hermes, Ollama, or LM Studio.</span>
                   </div>
                 )}
+
+                <div className="flex items-center gap-3">
+                  <Button variant="outline" onClick={handleTestConnection} disabled={testingConnection}>
+                    {testingConnection ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                    Test connection
+                  </Button>
+                  {connectionResult && (
+                    <div className={cn('text-sm', connectionResult.success ? 'text-green-600 dark:text-green-400' : 'text-destructive')}>
+                      {connectionResult.message}
+                    </div>
+                  )}
+                </div>
               </div>
             </TabsContent>
 

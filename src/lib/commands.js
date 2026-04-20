@@ -66,15 +66,21 @@ export const CONTEXT_REFS = [
 
 // Provider model lists (from Hermes setup.py)
 export const PROVIDER_MODELS = {
-  'openai-codex':  ['gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex', 'gpt-4.1', 'gpt-4o'],
-  'openai':        ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1', 'gpt-4-turbo'],
+  'openai':        ['gpt-5.4', 'gpt-5.4-mini', 'gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'],
   'anthropic':     ['claude-opus-4.6', 'claude-sonnet-4.6', 'claude-sonnet-4.5', 'claude-haiku-4.5'],
   'openrouter':    ['anthropic/claude-sonnet-4.6', 'google/gemini-2.5-flash', 'openai/gpt-4o', 'deepseek/deepseek-r1'],
-  'ollama':        ['llama3.1:8b', 'qwen3-coder', 'mistral', 'gemma3:12b'],
-  'lmstudio':      ['default', 'qwen3-coder-30b'],
   'gemini':        ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash'],
   'copilot':       ['gpt-5.4', 'gpt-5.4-mini', 'claude-sonnet-4.6', 'gemini-2.5-pro'],
-  'custom':        ['gpt-4o-mini', 'qwen3-coder-next'],
+  'local':         ['qwen3-coder-30b', 'llama3.1:8b', 'mistral', 'gemma3:12b'],
+}
+
+export const PROVIDER_URLS = {
+  'openai': 'https://api.openai.com/v1',
+  'anthropic': 'https://api.anthropic.com/v1',
+  'openrouter': 'https://openrouter.ai/api/v1',
+  'gemini': 'https://generativelanguage.googleapis.com/v1beta',
+  'copilot': 'https://api.githubcopilot.com',
+  'local': 'http://127.0.0.1:42427/v1'
 }
 
 /**

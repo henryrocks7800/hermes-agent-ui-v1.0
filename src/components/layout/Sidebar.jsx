@@ -10,8 +10,6 @@ import { storage } from '@/lib/storage'
 const navItems = [
   { id: 'chat', label: 'Chat', icon: MessageSquare },
   { id: 'threads', label: 'Threads', icon: BookOpen },
-  { id: 'skills', label: 'Skills', icon: Zap },
-  { id: 'automations', label: 'Automations', icon: Zap },
 ]
 
 export default function Sidebar({ activePage, onNavigate, threads, activeThreadId, onSelectThread, onNewThread, connectionStatus }) {

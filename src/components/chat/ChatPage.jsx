@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { storage, KEYS } from '@/lib/storage'
 import { streamChat, markdownToHtml } from '@/lib/chatStream'
 import Composer from './Composer.jsx'
-import { Bot, User, Loader2, Link2Off, AlertCircle } from 'lucide-react'
+import { Bot, User, Loader2, Link2Off, AlertCircle, FolderOpen, TerminalSquare } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export default function ChatPage({ thread, onUpdateThread, connectionStatus, setConnectionStatus, settings }) {
@@ -14,6 +14,7 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
   const [currentResponse, setCurrentResponse] = useState('')
   const [toolCalls, setToolCalls] = useState([])
   const [isThinking, setIsThinking] = useState(false)
+  const [runtimeEvents, setRuntimeEvents] = useState([])
   const scrollAreaRef = useRef(null)
   const currentResponseRef = useRef('')
 
@@ -25,7 +26,7 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
     } else if (!thread) {
       setMessages([{
         role: 'assistant',
-        content: `**Hermes Engine Initialized.**\n\nI am ready to assist with codebase inspection, autonomous task execution, and technical reasoning. What would you like to build?`,
+        content: `Hermes is ready. Select a project folder, then tell me what you want to build or change.`,
         timestamp: Date.now()
       }])
     }
@@ -50,6 +51,11 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
     setCurrentResponse('')
     setToolCalls([])
     setIsThinking(false)
+    setRuntimeEvents([
+      { type: 'status', text: 'Initializing Hermes agent...' },
+      { type: 'meta', text: `Provider: ${provider} · Model: ${model || 'none selected'}` },
+      { type: 'meta', text: `Endpoint: ${baseUrl}` },
+    ])
     setIsStreaming(true)
 
     let currentThread = thread
@@ -65,72 +71,153 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
       onUpdateThread(currentThread)
     }
 
-    const systemPrompt = `You are Hermes, an elite autonomous AI software engineer and orchestrator.\nAlways think step-by-step before answering.\nBreak down complex tasks into phases.\nBe concise, direct, and professional.\nUse tools when necessary.`
+    const projectFolder = storage.get('hermes.projectFolder', '')
+    const systemPrompt = `You are Hermes, an autonomous software engineering agent.\nWork agentically, by planning changes and producing filesystem-oriented work for the selected project folder when appropriate.\nProject folder: ${projectFolder || 'not selected'}.\nDo not dump large implementation files into chat unless explicitly asked.\nBe concise, direct, and action-oriented.`
     const apiMessages = [
       { role: 'system', content: systemPrompt },
       ...updatedMessages.map(m => ({ role: m.role, content: m.content })),
     ]
 
-    try {
-      await streamChat({
-        baseUrl,
-        model,
-        messages: apiMessages,
-        apiKey,
-        onToken: (token) => {
-          setIsThinking(false)
-          currentResponseRef.current += token
-          setCurrentResponse(currentResponseRef.current)
-        },
-        onThinking: () => {
-          setIsThinking(true)
-        },
-        onToolCall: (tools) => {
-          setToolCalls(prev => [...prev, ...tools])
-        },
-        onDone: () => {
-          const assistantMessage = {
-            role: 'assistant',
-            content: currentResponseRef.current,
-            toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-            timestamp: Date.now(),
-          }
-          const finalMessages = [...updatedMessages, assistantMessage]
-          setMessages(finalMessages)
-          
-          if (currentThread) {
-            onUpdateThread({ ...currentThread, messages: finalMessages })
-          }
+    const onDone = () => {
+      const assistantMessage = {
+        role: 'assistant',
+        content: currentResponseRef.current,
+        toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+        runtimeEvents: [...runtimeEvents],
+        timestamp: Date.now(),
+      }
+      const finalMessages = [...updatedMessages, assistantMessage]
+      setMessages(finalMessages)
+      
+      if (currentThread) {
+        onUpdateThread({ ...currentThread, messages: finalMessages })
+      }
 
-          currentResponseRef.current = ''
-          setCurrentResponse('')
-          setIsStreaming(false)
-        },
-        onError: (err) => {
-          console.error('Stream error:', err)
-          const message = err.message || 'Connection failed'
+      currentResponseRef.current = ''
+      setCurrentResponse('')
+      setRuntimeEvents([])
+      setIsStreaming(false)
+    }
+
+    const onError = (err) => {
+      console.error('Stream error:', err)
+      const message = err.message || 'Connection failed'
+      setConnectionStatus('disconnected')
+
+      const errorMessage = {
+        role: 'assistant',
+        content: `### Connection error\n\nI could not verify the selected provider.\n\n**Provider:** ${provider}\n**Model:** ${model || 'none selected'}\n**Base URL:** \`${baseUrl}\`\n**Error:** ${message}`,
+        timestamp: Date.now(),
+        isError: true,
+        runtimeEvents: [
+          ...runtimeEvents,
+          { type: 'warning', text: 'The request failed before Hermes could complete the turn.' },
+        ],
+        debug: { baseUrl, provider, model, mode, hasKey: !!apiKey }
+      }
+      const errorMessages = [...updatedMessages, errorMessage]
+      setMessages(errorMessages)
+      
+      if (currentThread) {
+        onUpdateThread({ ...currentThread, messages: errorMessages })
+      }
+      
+      setIsStreaming(false)
+    }
+
+    try {
+      if (window.hermesDesktop?.runAgent) {
+        // Clear previous event listeners for this run
+        window.hermesDesktop.onAgentStdout((data) => {
+          setIsThinking(false)
           
-          const errorMessage = {
-            role: 'assistant',
-            content: `### ❌ Connection Error\n\nThe engine is unable to reach the AI provider.\n\n**Attempted URL:** \`${baseUrl}\`\n**Error:** ${message}`,
-            timestamp: Date.now(),
-            isError: true,
-            debug: { baseUrl, provider, model, mode, hasKey: !!apiKey }
+          // Hermes uses specific marker tokens for assistant replies in single-query mode
+          if (data.includes('▌')) {
+            const parts = data.split('▌')
+            currentResponseRef.current += parts.pop()
+            setCurrentResponse(currentResponseRef.current)
+          } else if (data.includes('│ ') || data.includes('└─')) {
+            // These are runtime events / logs from Hermes
+            setRuntimeEvents(prev => [...prev, { type: 'tool', text: data.trim() }])
+          } else {
+            setRuntimeEvents(prev => [...prev, { type: 'tool', text: data.trim() }])
           }
-          const errorMessages = [...updatedMessages, errorMessage]
-          setMessages(errorMessages)
-          
-          if (currentThread) {
-            onUpdateThread({ ...currentThread, messages: errorMessages })
-          }
-          
-          setIsStreaming(false)
-        },
-      })
+        })
+        
+        window.hermesDesktop.onAgentStderr((data) => {
+          setRuntimeEvents(prev => [...prev, { type: 'warning', text: data.trim() }])
+        })
+
+        const env = {
+          OPENAI_BASE_URL: baseUrl,
+          OPENROUTER_API_KEY: provider === 'openrouter' ? apiKey : undefined,
+          ANTHROPIC_API_KEY: provider === 'anthropic' ? apiKey : undefined,
+          OPENAI_API_KEY: provider === 'openai' ? apiKey : undefined,
+        }
+
+        const res = await window.hermesDesktop.runAgent({
+          query: content,
+          cwd: projectFolder,
+          env,
+          sessionId: currentThread.id
+        })
+        
+        if (res.code !== 0) {
+          throw new Error(`Hermes agent exited with code ${res.code}`)
+        }
+        
+        // Ensure we record something if the response was empty
+        if (!currentResponseRef.current) {
+          currentResponseRef.current = 'Task completed. See runtime logs for details.'
+          setCurrentResponse(currentResponseRef.current)
+        }
+        
+        onDone()
+        
+      } else {
+        await streamChat({
+          baseUrl,
+          model,
+          messages: apiMessages,
+          apiKey,
+          onToken: (token) => {
+            setIsThinking(false)
+            currentResponseRef.current += token
+            setCurrentResponse(currentResponseRef.current)
+          },
+          onThinking: () => {
+            setIsThinking(true)
+            setRuntimeEvents(prev => prev.some(event => event.type === 'thinking') ? prev : [...prev, { type: 'thinking', text: 'Hermes is thinking and preparing the next step...' }])
+          },
+          onToolCall: (tools) => {
+            setToolCalls(prev => [...prev, ...tools])
+            setRuntimeEvents(prev => [...prev, ...tools.map(tool => ({ type: 'tool', text: `Tool call: ${tool.function?.name || 'Engine Protocol'}` }))])
+          },
+          onDone,
+          onError
+        })
+      }
     } catch (err) {
       console.error('Stream failed:', err)
       setIsStreaming(false)
     }
+  }
+
+  const renderRuntimeEvents = (events = []) => {
+    if (!events.length) return null
+    return (
+      <div className="mt-4 rounded-lg border border-border/60 bg-muted/30 p-3 space-y-2">
+        <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+          <TerminalSquare className="h-3 w-3" />
+          Hermes runtime
+        </div>
+        {events.map((event, idx) => (
+          <div key={idx} className="text-[11px] font-mono text-muted-foreground whitespace-pre-wrap">
+            {event.text}
+          </div>
+        ))}
+      </div>
+    )
   }
 
   const renderMessage = (msg, index) => {
@@ -156,6 +243,8 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
             <div dangerouslySetInnerHTML={{ __html: markdownToHtml(msg.content) }} />
           )}
           
+          {renderRuntimeEvents(msg.runtimeEvents)}
+
           {msg.isError && msg.debug && (
             <div className="mt-4 p-3 bg-destructive/10 rounded-lg border border-destructive/20 space-y-2">
                <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider">
@@ -166,7 +255,7 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
                   <span className="text-muted-foreground">Provider:</span> <span>{msg.debug.provider}</span>
                   <span className="text-muted-foreground">Mode:</span> <span>{msg.debug.mode}</span>
                   <span className="text-muted-foreground">Target URL:</span> <span className="truncate">{msg.debug.baseUrl}</span>
-                  <span className="text-muted-foreground">API Key:</span> <span>{msg.debug.hasKey ? 'Configured ✅' : (msg.debug.provider === 'ollama' || msg.debug.provider === 'lmstudio' || msg.debug.provider === 'custom' ? 'Not required ✅' : 'Missing ❌')}</span>
+                  <span className="text-muted-foreground">API Key:</span> <span>{msg.debug.provider === 'local' ? 'Not required ✅' : (msg.debug.hasKey ? 'Configured ✅' : 'Missing ❌')}</span>
                </div>
             </div>
           )}
@@ -218,7 +307,7 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
           {isStreaming && <Loader2 className="h-3 w-3 animate-spin text-primary" />}
           <div className={cn("flex items-center gap-1.5 px-2.5 py-1 rounded-full border transition-all duration-500 shadow-sm", connectionStatus === 'connected' ? "bg-green-500/10 border-green-500/20 text-green-500" : "bg-destructive/10 border-destructive/20 text-destructive")}>
              <div className={cn("w-1.5 h-1.5 rounded-full", connectionStatus === 'connected' ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]" : "bg-destructive shadow-[0_0_8px_rgba(239,68,68,0.5)]")} />
-             <span>{connectionStatus}</span>
+             <span>{connectionStatus === 'connected' ? `${provider}${model ? ` · ${model}` : ''}` : 'disconnected'}</span>
           </div>
         </div>
       </div>
@@ -236,7 +325,7 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
                  Autonomous workflows. Infinite possibilities.
               </p>
               <div className="flex flex-wrap justify-center gap-3">
-                {['/help', '/model', '/skills'].map(cmd => (
+                {['/help', '/model', '/tools'].map(cmd => (
                    <button 
                     key={cmd} 
                     className="group flex items-center gap-2 px-5 py-2.5 rounded-xl border border-border bg-card hover:border-primary/40 hover:bg-accent transition-all shadow-sm hover:shadow-md active:scale-95"
@@ -250,6 +339,24 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
           ) : (
             messages.map((msg, i) => renderMessage(msg, i))
           )}
+          {!thread && !storage.get('hermes.projectFolder', '') && (
+            <div className="px-4 pt-2">
+              <div className="mx-auto max-w-4xl rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 rounded-xl bg-amber-500/20 p-2 text-amber-700">
+                    <FolderOpen className="h-4 w-4" />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-sm font-semibold text-foreground">Select a workspace before you start</div>
+                    <p className="text-xs text-muted-foreground max-w-2xl">
+                      Hermes can chat straight away, but it works best when it knows which project folder it should inspect, modify, and build in.
+                      Pick a workspace below to enable sending and to unlock file-aware actions.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           {isThinking && !currentResponse && (
             <div className="flex gap-3 p-4 justify-start animate-in fade-in">
               <div className="w-8 h-8 rounded-full bg-muted border border-border text-foreground flex items-center justify-center flex-shrink-0">
@@ -258,6 +365,16 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
               <div className="max-w-[80%] rounded-xl px-4 py-3 text-sm bg-card border border-border shadow-sm flex items-center gap-3">
                 <Loader2 className="h-4 w-4 animate-spin text-primary" />
                 <span className="text-muted-foreground text-xs font-medium italic">Thinking...</span>
+              </div>
+            </div>
+          )}
+          {runtimeEvents.length > 0 && (
+            <div className="flex gap-3 p-4 justify-start">
+              <div className="w-8 h-8 rounded-full bg-muted border border-border text-foreground flex items-center justify-center flex-shrink-0">
+                <Bot className="h-4 w-4" />
+              </div>
+              <div className="max-w-[80%] rounded-xl px-4 py-3 text-sm bg-card border border-border shadow-sm">
+                {renderRuntimeEvents(runtimeEvents)}
               </div>
             </div>
           )}
@@ -281,6 +398,7 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
           model={model} 
           onModelChange={(m) => settings.onSettingsChange({ ...settings, model: m })}
           provider={provider}
+          workspaceRequired
         />
       </div>
     </div>

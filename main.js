@@ -6,6 +6,7 @@ import http from 'http'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 
+import { getBackendPath } from './main-utils.js'
 const execAsync = promisify(exec)
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -130,4 +131,32 @@ ipcMain.handle('backend:update', async (event) => {
   } catch (err) {
     return { success: false, message: err.message }
   }
+})
+
+ipcMain.handle('agent:run', async (event, { query, cwd, env, sessionId }) => {
+  const exePath = '/home/henry/.hermes/hermes-agent-ui-v1.0/.venv-build/bin/python'
+  
+  const args = ['bundled-backend/ui-wrapper.py', query]
+  if (sessionId) {
+    args.push('--resume', sessionId)
+  }
+
+  const child = spawn(exePath, args, {
+    cwd: cwd || process.cwd(),
+    env: { ...process.env, ...env, FORCE_COLOR: '1' }
+  })
+  
+  child.stdout.on('data', (data) => { require('fs').appendFileSync('debug_stream.log', data); 
+    event.sender.send('agent:stdout', data.toString())
+  })
+  
+  child.stderr.on('data', (data) => { require('fs').appendFileSync('debug_err.log', data); 
+    event.sender.send('agent:stderr', data.toString())
+  })
+  
+  return new Promise((resolve) => {
+    child.on('close', (code) => {
+      resolve({ code })
+    })
+  })
 })
