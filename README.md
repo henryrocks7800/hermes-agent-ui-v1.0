@@ -1,107 +1,105 @@
 # Hermes Agent Desktop
 
-Welcome to **Hermes Agent Desktop**! This is a beautiful, easy-to-use Windows application that brings the power of the Hermes AI coding assistant directly to your desktop.
+A desktop UI for the [Hermes Agent](https://github.com/nousresearch/hermes-agent) — the full tool-using coding agent (terminal, file I/O, browser, search, skills), driven through a chat window. The app runs on **Windows** as an installable Electron binary, and on **macOS / Linux / WSL** in a local browser with a thin HTTP bridge.
 
-## What is this?
-Hermes is an AI agent that helps you write code, manage files, run terminal commands, and automate software development tasks. Originally built as a Command Line (CLI) tool, this project wraps that powerful engine into a native, modern, and user-friendly desktop interface. 
+## What you get
 
-Even if you aren't a terminal wizard, you can now chat with Hermes, attach files, ask it to read your code, and let it work for you all from a sleek chat window.
+- **A real agent, not a chat wrapper.** Every message you send is executed by `run_agent.py` — it plans, calls tools, writes files, runs shell commands, and reports the transcript back into the chat bubble. There is no hidden fallback to plain LLM calls.
+- **Your choice of engine.** Hermes can drive OpenAI, Anthropic, OpenRouter, GitHub Copilot, Google Gemini, or any OpenAI-compatible local endpoint (Ollama, LM Studio, LocalAI, or the Hermes CLI's own OpenAI server).
+- **Slash commands and context shortcuts.** `/help`, `/model`, `/tools` from the chat entry screen; `/` for autocomplete while typing; `@file:` to attach local context.
+- **Live transcript.** Every run streams tool calls, file writes, and thinking summaries into the same assistant bubble.
+- **Settings that actually do something.** Max iterations, logging verbosity, and provider credentials all flow through to `run_agent.py` at spawn time. The Settings page auto-tests each provider as you type and shows a ✓ / ✕ on each provider tile.
 
-## Key Features
-- **Plug-and-Play AI:** Connects to OpenAI, Anthropic, OpenRouter, or even runs completely offline using local models via Ollama or LM Studio.
-- **Native OS Integration:** Attach files directly from your computer to give the AI context.
-- **Slash Commands & Context:** Type `/` to easily access commands, or `@` to quickly link local files and folders.
-- **Light & Dark Mode:** Built-in theme toggling to suit your visual preference.
-- **Complete Privacy Control:** You hold the API keys, and you choose what the AI can see.
+## Status
 
-## Free and Open Source
-This project is **100% Free and Open Source** under the MIT License. You are completely free to use it, modify it, share it, and build upon it. We believe powerful AI tools should be accessible to everyone without mandatory subscriptions or walled gardens.
+Alpha. Works end-to-end (both Windows installer and browser-bridge mode) and has a Playwright E2E test that proves a real file write. Rough edges are being filed in GitHub issues — please help.
 
-## ⚠️ Alpha Status
-**This project is currently in Alpha.** It is functional and usable, but we're actively discovering and fixing bugs, improving stability, and refining the user experience. Your feedback and contributions are critical to making this production-ready!
+## Running
 
-## 🤝 We Need Your Help to Grow!
-We want this to be the best open-source desktop AI assistant available, and we welcome contributions from developers of all skill levels! 
+There are two equally-supported ways to run the UI:
 
-**TOP PRIORITY (Alpha Stabilization):**
-1. **🧪 Testing & Bug Fixing:** The #1 priority right now is testing the Windows app thoroughly and fixing bugs. Try different AI providers, test edge cases, file issues for crashes or unexpected behavior. Check the [QA Test Suite](e2e/tests/qa-settings.spec.js) for what's already been validated.
-2. **📋 Issue Triage:** Help us organize, reproduce, and prioritize reported bugs and feature requests.
-3. **📝 Documentation:** Help improve setup guides, troubleshooting docs, and user-facing documentation based on what confuses new users.
+### 1. Windows installer (end users)
 
-**Future Enhancements (After Alpha):**
-1. **🍏 macOS Version:** Once Windows is stable, help port to Apple Silicon! Electron supports cross-platform builds.
-2. **🐧 Linux Native Version:** Package for Ubuntu/Debian (`.deb`, AppImage, or Flatpak).
-3. **🎙️ Voice Chat Feature:** Add speech-to-text (STT) and text-to-speech (TTS) for hands-free interaction.
+1. Download the latest `Hermes Agent Setup X.Y.Z.exe` from `distribution/` in this repo.
+2. Run it, choose an install path, launch **Hermes Agent**.
+3. On first launch the onboarding wizard asks for provider + model + API key. Pick any provider; Local is the zero-key default.
 
-### How to Contribute
-1. Fork the repository on GitHub.
-2. Clone it locally and run `npm install` followed by `npm run dev:web`.
-3. Make your awesome changes.
-4. Run the tests with `npm run test:e2e` to make sure everything works perfectly.
-5. Open a Pull Request!
+The installer bundles the Hermes Python backend under `resources/hermes-backend` and the Electron shell spawns it directly — no separate service to start.
 
-## Building
+### 2. Browser + bridge (developers, Linux/macOS/WSL users)
 
-### Development Mode
-Run the web UI in hot-reload development mode:
+Two processes: Vite serves the UI at `localhost:5173`, and a tiny Node HTTP bridge at `127.0.0.1:42500` spawns the real Hermes agent per message. Both are started with one command:
+
 ```bash
-npm run dev:web
-```
-Opens at http://localhost:5173
-
-### Web Build
-Build the web assets for production:
-```bash
-npm run build
-```
-Output goes to `web-dist/`
-
-### Testing
-Run the end-to-end test suite (Playwright):
-```bash
-npm run test:e2e
+npm install
+npm run dev:browser
 ```
 
-Run QA settings tests only:
+Then open <http://localhost:5173>.
+
+Under the hood `dev:browser` runs:
+- `scripts/hermes-bridge-server.mjs` — HTTP bridge (endpoint `POST /agent/run`) that invokes `bundled-backend/ui-wrapper.py` → `run_agent.py`
+- `vite --host localhost --port 5173` — the UI
+
+If you prefer, you can start them in separate terminals:
+
 ```bash
-npx playwright test qa-settings
+npm run bridge     # terminal 1 — http://127.0.0.1:42500
+npm run dev:web    # terminal 2 — http://localhost:5173
 ```
 
-### Windows Installer (Automated)
-The easiest way to build the Windows installer is to use the provided PowerShell script. This script:
-1. Copies the project to a temporary Windows build directory (avoiding WSL UNC path issues)
-2. Installs dependencies
-3. Builds web assets with Vite
-4. Packages the app with electron-builder
-5. Verifies the build output
-6. Copies the installer back to the project `dist/` folder
+#### WSL-specific behavior
 
-**From Windows (PowerShell):**
+The bridge is WSL-aware:
+- Windows-style paths (e.g. `C:\projects\myapp`) typed into the workspace picker are auto-translated to `/mnt/c/projects/myapp` before being passed to Python.
+- Browser-entered base URLs of `localhost` / `127.0.0.1` are rewritten to the Windows host's default gateway IP, so Hermes running in WSL can reach an LLM server running on Windows (LM Studio, Ollama, etc.).
+
+Both rewrites are logged into the Hermes runtime panel so you always know what the agent actually saw.
+
+## Build a Windows installer from source
+
+Run from a Windows PowerShell (not inside WSL — it needs native Windows `npm`):
+
 ```powershell
 PowerShell -ExecutionPolicy Bypass -File .\scripts\Build-Windows-Installer.ps1
 ```
 
-**From WSL/Linux:**
-```bash
-powershell.exe -ExecutionPolicy Bypass -File "/mnt/c/tmp/Build-Windows-Installer.ps1"
-```
-(Note: copy the script to your Windows temp folder first if needed)
+This copies the repo out of WSL into `C:\temp\hermes-agent-build`, runs `npm install`, builds Vite + electron-builder, and writes the resulting `Hermes Agent Setup X.Y.Z.exe` into the repo's `distribution/` folder.
 
-The resulting `.exe` installer will be in `dist/` and ready to ship.
+Manual equivalent (on Windows):
 
-### Windows Installer (Manual)
-If you prefer to build manually on Windows:
 ```powershell
 npm install
 npm run build
 npm run dist:win
 ```
 
-### Electron Dev Mode
-Launch the Electron app with the latest build:
+## Settings → what is wired
+
+| Setting                | What it does                                                                 | CLI flag           |
+|------------------------|------------------------------------------------------------------------------|--------------------|
+| Provider + Model       | Selects the LLM Hermes uses as its reasoning engine                          | `--model`          |
+| Base URL               | OpenAI-compatible endpoint                                                   | `--base_url`       |
+| API Key                | Forwarded to the provider                                                    | `--api_key`        |
+| Max Iterations         | Cap on agent loop iterations                                                 | `--max_turns`      |
+| Logging Verbosity      | `verbose` sets `--verbose`; other values stay quiet                          | `--verbose`        |
+| Reasoning Effort       | Forwarded as `HERMES_REASONING_EFFORT` env (agent core does not consume yet) | *(env only)*       |
+
+Behavior settings are read **live from storage on every send** — you don't have to re-save Settings between runs.
+
+## Tests
+
 ```bash
-npm run electron:dev
+npm run test         # unit tests (Vitest)
+npm run test:e2e     # full Playwright E2E, including a real-agent file-write test
 ```
 
+The real-agent test (`e2e/tests/agent-integration.spec.js`) launches the Electron app, points it at a local LLM, and asserts the agent actually writes a file to disk with the expected contents.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). TL;DR: fork, branch with `feat/` / `fix/` / `docs/`, run the tests, open a PR.
+
 ## License
-MIT License - See the [LICENSE](LICENSE) file for details.
+
+MIT — see [LICENSE](LICENSE).

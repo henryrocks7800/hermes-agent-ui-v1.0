@@ -8,7 +8,7 @@ import Composer from './Composer.jsx'
 import { Bot, User, Loader2, Link2Off, AlertCircle, FolderOpen, TerminalSquare } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-export default function ChatPage({ thread, onUpdateThread, connectionStatus, setConnectionStatus, settings }) {
+export default function ChatPage({ thread, onUpdateThread, connectionStatus, setConnectionStatus, settings, onNavigate }) {
   const [messages, setMessages] = useState(thread?.messages || [])
   const [isStreaming, setIsStreaming] = useState(false)
   const [currentResponse, setCurrentResponse] = useState('')
@@ -164,20 +164,26 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
       })
     }
 
+    // Pull the agent's final natural-language answer out of the transcript
+    // so we can show it as the message headline instead of dumping the raw
+    // log as the "chat reply". Looks for the "🎯 FINAL RESPONSE:" section
+    // emitted by ui-wrapper / run_agent.
     const finalizeAgentTranscript = () => {
-      if (!currentResponseRef.current) {
-        const rawTranscript = runtimeEventsRef.current
-          .map((event) => event.text)
-          .filter(Boolean)
-          .join('\n')
-          .trim()
-        if (rawTranscript) {
-          currentResponseRef.current = '```\n' + rawTranscript + '\n```'
-        } else {
-          currentResponseRef.current = 'Task completed. See runtime logs for details.'
+      const lines = runtimeEventsRef.current.map((e) => e.text)
+      const text = lines.join('\n')
+      const marker = text.indexOf('FINAL RESPONSE:')
+      let finalAnswer = ''
+      if (marker !== -1) {
+        const after = text.slice(marker).split(/\r?\n/).slice(1)
+        for (const line of after) {
+          if (/^[=\-]{5,}$/.test(line.trim())) continue
+          if (/^(👋|📋|🎯)/.test(line.trim())) break
+          finalAnswer += (finalAnswer ? '\n' : '') + line
         }
-        setCurrentResponse(currentResponseRef.current)
+        finalAnswer = finalAnswer.trim()
       }
+      currentResponseRef.current = finalAnswer
+      setCurrentResponse(finalAnswer)
     }
 
     const bridgeUrl = (typeof window !== 'undefined' && window.__HERMES_BRIDGE_URL) || 'http://127.0.0.1:42500'
@@ -235,30 +241,20 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
         onDone()
 
       } else {
-        await streamChat({
-          baseUrl,
-          model,
-          messages: apiMessages,
-          apiKey,
-          onToken: (token) => {
-            setIsThinking(false)
-            currentResponseRef.current += token
-            setCurrentResponse(currentResponseRef.current)
-          },
-          onThinking: () => {
-            setIsThinking(true)
-            setRuntimeEvents(prev => prev.some(event => event.type === 'thinking') ? prev : [...prev, { type: 'thinking', text: 'Hermes is thinking and preparing the next step...' }])
-          },
-          onToolCall: (tools) => {
-            setToolCalls(prev => [...prev, ...tools])
-            setRuntimeEvents(prev => [...prev, ...tools.map(tool => ({ type: 'tool', text: `Tool call: ${tool.function?.name || 'Engine Protocol'}` }))])
-          },
-          onDone,
-          onError
-        })
+        // No Electron IPC and no HTTP bridge — we intentionally do NOT fall
+        // back to a raw /v1/chat/completions call. That would produce a
+        // plain-LLM reply that looks like a Hermes agent run but does not
+        // actually call any tools, write files, or do the real work the
+        // user asked for. Fail loudly instead.
+        throw new Error(
+          'Hermes runtime is not reachable. Start the local bridge with ' +
+          '"npm run bridge" (or launch the Electron app) so chat messages ' +
+          'are driven by the real Hermes agent.'
+        )
       }
     } catch (err) {
       console.error('Stream failed:', err)
+      onError(err)
       setIsStreaming(false)
     }
   }
@@ -299,11 +295,28 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
         )}>
           {isUser ? (
             <p className="whitespace-pre-wrap">{msg.content}</p>
-          ) : (
+          ) : msg.content ? (
             <div dangerouslySetInnerHTML={{ __html: markdownToHtml(msg.content) }} />
-          )}
-          
-          {renderRuntimeEvents(msg.runtimeEvents)}
+          ) : null}
+
+          {/* Runtime transcript: show the collapsible log if we have events.
+              When the message has no content (just events), the transcript
+              IS the message body, so drop the "MT-4" gap. */}
+          {msg.runtimeEvents && msg.runtimeEvents.length > 0 ? (
+            <details className={cn('rounded-lg border border-border/60 bg-muted/30', msg.content ? 'mt-4' : '')} open={!msg.content}>
+              <summary className="cursor-pointer list-none px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                <TerminalSquare className="h-3 w-3" />
+                Hermes runtime · {msg.runtimeEvents.length} events
+              </summary>
+              <div className="px-3 pb-3 space-y-1 border-t border-border/40 pt-2">
+                {msg.runtimeEvents.map((event, idx) => (
+                  <div key={idx} className="text-[11px] font-mono text-muted-foreground whitespace-pre-wrap leading-relaxed">
+                    {event.text}
+                  </div>
+                ))}
+              </div>
+            </details>
+          ) : null}
 
           {msg.isError && msg.debug && (
             <div className="mt-4 p-3 bg-destructive/10 rounded-lg border border-destructive/20 space-y-2">
@@ -373,7 +386,7 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
       </div>
 
       <ScrollArea ref={scrollAreaRef} className="flex-1 overflow-y-auto">
-        <div className="pb-32 pt-4">
+        <div className="pb-64 pt-4">
           {messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center p-8 mt-12 animate-in fade-in zoom-in-95 duration-500">
               <div className="w-20 h-20 rounded-3xl bg-muted border border-border text-foreground flex items-center justify-center mb-6 shadow-xl relative group">
@@ -385,11 +398,37 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
                  Autonomous workflows. Infinite possibilities.
               </p>
               <div className="flex flex-wrap justify-center gap-3">
-                {['/help', '/model', '/tools'].map(cmd => (
-                   <button 
-                    key={cmd} 
+                {[
+                  { cmd: '/help',  onClick: () => setMessages([
+                      { role: 'assistant', timestamp: Date.now(), content:
+                        `### Hermes shortcuts\n\n` +
+                        `- **/help** – show this card\n` +
+                        `- **/model** – open Settings → Connection to change the LLM\n` +
+                        `- **/tools** – list the ${31} tools the agent has access to\n\n` +
+                        `Type a request in the box below and Hermes will plan, run tools, and write files for you. ` +
+                        `The workspace folder must be selected before you can send.`
+                      }
+                    ])
+                  },
+                  { cmd: '/model', onClick: () => onNavigate?.('settings') },
+                  { cmd: '/tools', onClick: () => setMessages([
+                      { role: 'assistant', timestamp: Date.now(), content:
+                        `### Tools available to Hermes\n\n` +
+                        '`browser_back`, `browser_click`, `browser_close`, `browser_console`, `browser_get_images`, ' +
+                        '`browser_navigate`, `browser_press`, `browser_scroll`, `browser_snapshot`, `browser_type`, ' +
+                        '`browser_vision`, `clarify`, `delegate_task`, `execute_code`, `memory`, `mixture_of_agents`, ' +
+                        '`patch`, `process`, `read_file`, `search_files`, `send_message`, `session_search`, ' +
+                        '`skill_manage`, `skill_view`, `skills_list`, `terminal`, `text_to_speech`, `todo`, ' +
+                        '`web_extract`, `web_search`, `write_file`\n\n' +
+                        `Hermes picks from this set automatically based on the task you give it.`
+                      }
+                    ])
+                  },
+                ].map(({ cmd, onClick }) => (
+                   <button
+                    key={cmd}
                     className="group flex items-center gap-2 px-5 py-2.5 rounded-xl border border-border bg-card hover:border-primary/40 hover:bg-accent transition-all shadow-sm hover:shadow-md active:scale-95"
-                    onClick={() => handleSendMessage(cmd)}
+                    onClick={onClick}
                   >
                     <span className="text-[10px] font-black text-primary/60 group-hover:text-primary transition-colors tracking-tighter">{cmd}</span>
                    </button>
@@ -417,34 +456,36 @@ export default function ChatPage({ thread, onUpdateThread, connectionStatus, set
               </div>
             </div>
           )}
-          {isThinking && !currentResponse && (
+          {/* Live streaming bubble: a single assistant bubble that shows the
+              Hermes runtime transcript as it streams. No separate "thinking"
+              ghost, no duplicate content block — just the events. */}
+          {isStreaming && runtimeEvents.length > 0 && (
+            <div className="flex gap-3 p-4 justify-start animate-in fade-in">
+              <div className="w-8 h-8 rounded-full bg-muted border border-border text-foreground flex items-center justify-center flex-shrink-0 shadow-sm">
+                <Bot className="h-4 w-4" />
+              </div>
+              <div className="max-w-[80%] rounded-xl px-4 py-3 text-sm bg-card border border-border/50 shadow-sm space-y-2">
+                <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                  <TerminalSquare className="h-3 w-3" />
+                  Hermes runtime · running
+                </div>
+                <div className="max-h-[320px] overflow-y-auto space-y-1 font-mono text-[11px] text-muted-foreground whitespace-pre-wrap leading-relaxed">
+                  {runtimeEvents.map((event, idx) => (
+                    <div key={idx}>{event.text}</div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+          {isStreaming && runtimeEvents.length === 0 && (
             <div className="flex gap-3 p-4 justify-start animate-in fade-in">
               <div className="w-8 h-8 rounded-full bg-muted border border-border text-foreground flex items-center justify-center flex-shrink-0">
                 <Bot className="h-4 w-4" />
               </div>
               <div className="max-w-[80%] rounded-xl px-4 py-3 text-sm bg-card border border-border shadow-sm flex items-center gap-3">
                 <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                <span className="text-muted-foreground text-xs font-medium italic">Thinking...</span>
-              </div>
-            </div>
-          )}
-          {runtimeEvents.length > 0 && (
-            <div className="flex gap-3 p-4 justify-start">
-              <div className="w-8 h-8 rounded-full bg-muted border border-border text-foreground flex items-center justify-center flex-shrink-0">
-                <Bot className="h-4 w-4" />
-              </div>
-              <div className="max-w-[80%] rounded-xl px-4 py-3 text-sm bg-card border border-border shadow-sm">
-                {renderRuntimeEvents(runtimeEvents)}
-              </div>
-            </div>
-          )}
-          {currentResponse && (
-            <div className="flex gap-3 p-4 justify-start">
-              <div className="w-8 h-8 rounded-full bg-muted border border-border text-foreground flex items-center justify-center flex-shrink-0">
-                <Bot className="h-4 w-4" />
-              </div>
-              <div className="max-w-[80%] rounded-xl px-4 py-2.5 text-sm prose-chat bg-card border border-border shadow-sm">
-                <div dangerouslySetInnerHTML={{ __html: markdownToHtml(currentResponse) }} />
+                <span className="text-muted-foreground text-xs font-medium italic">Starting Hermes agent…</span>
               </div>
             </div>
           )}

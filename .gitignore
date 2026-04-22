@@ -6,6 +6,11 @@ dist/
 web-dist/
 out/
 
+# Installer artifacts — keep the folder (README stays tracked), ignore binaries
+distribution/*.exe
+distribution/*.blockmap
+distribution/*.yml
+
 # Electron builder cache
 .cache/
 

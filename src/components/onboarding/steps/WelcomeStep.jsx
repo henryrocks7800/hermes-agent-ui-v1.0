@@ -20,21 +20,17 @@ export default function WelcomeStep({ onBegin, onSkip }) {
         <ul className="space-y-2 text-sm">
           <li className="flex items-center gap-2">
             <Check className="h-4 w-4 text-primary" />
-            AI Provider & Model
+            AI Provider &amp; Model
           </li>
           <li className="flex items-center gap-2">
             <Check className="h-4 w-4 text-primary" />
-            Backend Connection
-          </li>
-          <li className="flex items-center gap-2">
-            <Check className="h-4 w-4 text-primary" />
-            Agent Settings
-          </li>
-          <li className="flex items-center gap-2">
-            <Check className="h-4 w-4 text-primary" />
-            Tools (optional)
+            Agent Settings (iterations, reasoning)
           </li>
         </ul>
+        <p className="text-[11px] text-muted-foreground mt-3 italic">
+          Extra tools (web search, vision, text-to-speech) are configured later
+          from the Settings page — we don't ask for them up front.
+        </p>
       </div>
 
       <Separator className="mb-6" />

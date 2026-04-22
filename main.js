@@ -7,9 +7,10 @@ import { exec, spawn } from 'child_process'
 import { promisify } from 'util'
 
 import { getBackendPath, isDevMode } from './main-utils.js'
+import { buildMenuTemplate } from './menu.js'
 const execAsync = promisify(exec)
 
-const { app, BrowserWindow, ipcMain, shell, dialog, Notification } = electron
+const { app, BrowserWindow, Menu, ipcMain, shell, dialog, Notification } = electron
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 const isDev = isDevMode()
@@ -53,6 +54,21 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  // Install a real application menu before the first window appears so the
+  // native top bar (File / Edit / View / Window / Help) has working actions
+  // instead of Electron's default placeholder.
+  const template = buildMenuTemplate({
+    shell,
+    app,
+    dialog,
+    getFocusedWindow: () => BrowserWindow.getFocusedWindow(),
+    sendToRenderer: (channel, ...args) => {
+      const win = BrowserWindow.getFocusedWindow() || mainWindow
+      if (win && !win.isDestroyed()) win.webContents.send(channel, ...args)
+    },
+  })
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+
   createWindow()
   app.on('activate', () => { if (!mainWindow) createWindow() })
 })
