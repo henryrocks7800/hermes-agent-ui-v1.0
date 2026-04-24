@@ -7,11 +7,13 @@
   "scripts": {
     "dev": "vite",
     "dev:web": "vite --host localhost --port 5173",
+    "bridge": "node scripts/hermes-bridge-server.mjs",
+    "dev:browser": "node scripts/dev-browser.mjs",
     "build": "vite build",
     "electron:dev": "npm run build && electron .",
     "electron:start": "electron .",
     "dist:win": "npm run build && electron-builder --win nsis",
-    "test": "vitest run src/**/*.test.js",
+    "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:update": "playwright test --update-snapshots",
@@ -53,7 +55,7 @@
     "appId": "com.hermes.agent.desktop",
     "productName": "Hermes Agent",
     "directories": { "output": "dist" },
-    "files": ["web-dist/**/*", "main.js", "preload.js", "main-utils.js"],
+    "files": ["web-dist/**/*", "main.js", "menu.js", "preload.cjs", "main-utils.js", "scripts/hermes-bridge-server.mjs"],
     "extraResources": [
       { "from": "bundled-backend/hermes-backend", "to": "hermes-backend", "filter": ["**/*"] }
     ],

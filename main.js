@@ -7,9 +7,10 @@ import { exec, spawn } from 'child_process'
 import { promisify } from 'util'
 
 import { getBackendPath, isDevMode } from './main-utils.js'
+import { buildMenuTemplate } from './menu.js'
 const execAsync = promisify(exec)
 
-const { app, BrowserWindow, ipcMain, shell, dialog, Notification } = electron
+const { app, BrowserWindow, Menu, ipcMain, shell, dialog, Notification } = electron
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 const isDev = isDevMode()
@@ -53,6 +54,21 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  // Install a real application menu before the first window appears so the
+  // native top bar (File / Edit / View / Window / Help) has working actions
+  // instead of Electron's default placeholder.
+  const template = buildMenuTemplate({
+    shell,
+    app,
+    dialog,
+    getFocusedWindow: () => BrowserWindow.getFocusedWindow(),
+    sendToRenderer: (channel, ...args) => {
+      const win = BrowserWindow.getFocusedWindow() || mainWindow
+      if (win && !win.isDestroyed()) win.webContents.send(channel, ...args)
+    },
+  })
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+
   createWindow()
   app.on('activate', () => { if (!mainWindow) createWindow() })
 })
@@ -134,15 +150,98 @@ ipcMain.handle('backend:update', async (event) => {
   }
 })
 
+// Resolve which backend to spawn for the agent:run IPC. Order of preference:
+//   1. The packaged PyInstaller binary at getBackendPath() — this is what the
+//      Windows installer is *supposed* to ship. Requires a Windows PyInstaller
+//      build of the backend to exist at that location.
+//   2. The WSL dev venv at .venv-build/bin/python + bundled-backend/ui-wrapper.py —
+//      only useful when running `npm run electron:dev` on this developer's WSL box.
+//   3. Null — nothing executable found. Caller should fall back to the HTTP bridge.
+// Returns { exePath, args } or null.
+function resolveAgentSpawn(query, sessionId) {
+  const backend = getBackendPath()
+  const backendExe = process.platform === 'win32' ? `${backend}.exe` : backend
+  if (fs.existsSync(backendExe)) {
+    const args = [query]
+    if (sessionId) args.push('--resume', sessionId)
+    return { exePath: backendExe, args, mode: 'packaged' }
+  }
+
+  // Dev-only fallback: our WSL venv + ui-wrapper.py. Skip on Windows since the
+  // hardcoded POSIX path will never exist and spawn will just fail with ENOENT.
+  if (isDev && process.platform !== 'win32') {
+    const devPython = path.join(__dirname, '.venv-build', 'bin', 'python')
+    const wrapperPath = path.join(__dirname, 'bundled-backend', 'ui-wrapper.py')
+    if (fs.existsSync(devPython) && fs.existsSync(wrapperPath)) {
+      const args = [wrapperPath, query]
+      if (sessionId) args.push('--resume', sessionId)
+      return { exePath: devPython, args, mode: 'dev-venv' }
+    }
+  }
+
+  return null
+}
+
+// Proxy an agent run to the local HTTP bridge (scripts/hermes-bridge-server.mjs).
+// Streams the response body line-by-line back to the renderer on 'agent:stdout'
+// and resolves with an exit code that mirrors spawn semantics (0 on success).
+async function proxyAgentRunToBridge(event, { query, cwd, env }) {
+  const bridgeUrl = process.env.HERMES_BRIDGE_URL || 'http://127.0.0.1:42500'
+  try {
+    const healthRes = await fetch(`${bridgeUrl}/health`, { signal: AbortSignal.timeout(1500) })
+    if (!healthRes.ok) throw new Error(`bridge /health returned ${healthRes.status}`)
+  } catch (err) {
+    event.sender.send(
+      'agent:stderr',
+      `No bundled backend found and the local HTTP bridge at ${bridgeUrl} is not reachable.\n` +
+      `Either install a build that includes the bundled backend, or start the bridge with:\n` +
+      `    npm run bridge\n` +
+      `in the hermes-agent-ui-v1.0 repo before sending another message.\n` +
+      `(bridge health check: ${err.message})\n`
+    )
+    return { code: 1 }
+  }
+
+  event.sender.send('agent:stdout', `⚙  Bundled backend not found — routing this run through the HTTP bridge at ${bridgeUrl}\n`)
+
+  try {
+    const res = await fetch(`${bridgeUrl}/agent/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, cwd, env }),
+    })
+    if (!res.ok || !res.body) {
+      event.sender.send('agent:stderr', `bridge /agent/run returned HTTP ${res.status}\n`)
+      return { code: res.status || 1 }
+    }
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder('utf-8')
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) break
+      event.sender.send('agent:stdout', decoder.decode(value, { stream: true }))
+    }
+    return { code: 0 }
+  } catch (err) {
+    event.sender.send('agent:stderr', `bridge proxy error: ${err.message}\n`)
+    return { code: 1 }
+  }
+}
+
 ipcMain.handle('agent:run', async (event, { query, cwd, env, sessionId }) => {
-  const exePath = '/home/henry/.hermes/hermes-agent-ui-v1.0/.venv-build/bin/python'
-  const wrapperPath = path.join(app.getAppPath(), 'bundled-backend', 'ui-wrapper.py')
+  const debugLog = path.join(app.getPath('userData'), 'hermes-ui-debug.log')
+  const appendDebug = (msg) => {
+    try { fs.appendFileSync(debugLog, msg) } catch { /* best-effort */ }
+  }
 
-  fs.appendFileSync('/tmp/hermes-ui-debug.log', `HANDLER START\nexePath=${exePath}\nwrapperPath=${wrapperPath}\ncwd=${cwd || process.cwd()}\nquery=${query}\n`)
+  const spawnSpec = resolveAgentSpawn(query, sessionId)
+  if (!spawnSpec) {
+    appendDebug(`HANDLER START (no backend found) cwd=${cwd || process.cwd()} query=${query}\n`)
+    return proxyAgentRunToBridge(event, { query, cwd, env })
+  }
 
-  const args = [wrapperPath, query]
-  if (sessionId) args.push('--resume', sessionId)
-  fs.appendFileSync('/tmp/hermes-ui-debug.log', `args=${JSON.stringify(args)}\n`)
+  const { exePath, args, mode } = spawnSpec
+  appendDebug(`HANDLER START mode=${mode}\nexePath=${exePath}\nargs=${JSON.stringify(args)}\ncwd=${cwd || process.cwd()}\n`)
 
   const child = spawn(exePath, args, {
     cwd: cwd || process.cwd(),
@@ -150,30 +249,29 @@ ipcMain.handle('agent:run', async (event, { query, cwd, env, sessionId }) => {
     stdio: ['ignore', 'pipe', 'pipe'],
   })
 
-  fs.appendFileSync('/tmp/hermes-ui-debug.log', `spawned pid=${child.pid || 'unknown'}\n`)
+  appendDebug(`spawned pid=${child.pid || 'unknown'}\n`)
 
   child.stdout?.setEncoding('utf8')
   child.stderr?.setEncoding('utf8')
 
   child.stdout?.on('data', (data) => {
-    fs.appendFileSync('/tmp/hermes-ui-debug.log', data)
+    appendDebug(data)
     event.sender.send('agent:stdout', data)
   })
 
   child.on('error', (err) => {
-    const msg = `SPAWN ERR: ${err.message}\n`
-    fs.appendFileSync('/tmp/hermes-ui-debug-err.log', msg)
+    appendDebug(`SPAWN ERR: ${err.message}\n`)
     event.sender.send('agent:stderr', `Failed to start agent: ${err.message}`)
   })
 
   child.stderr?.on('data', (data) => {
-    fs.appendFileSync('/tmp/hermes-ui-debug-err.log', data)
+    appendDebug(`ERR: ${data}`)
     event.sender.send('agent:stderr', data)
   })
 
   return new Promise((resolve) => {
     child.on('close', (code) => {
-      fs.appendFileSync('/tmp/hermes-ui-debug.log', `child close code=${code}\n`)
+      appendDebug(`child close code=${code}\n`)
       resolve({ code })
     })
   })

@@ -43,6 +43,26 @@ export default function MainLayout() {
     storage.set(KEYS.ACTIVE_THREAD, activeThreadId)
   }, [activeThreadId])
 
+  // Electron menu -> renderer bridge. The native File / Help menu items in
+  // menu.js send 'command' IPC messages; we translate them into in-app
+  // actions here so the top bar actually does something.
+  useEffect(() => {
+    if (!window.hermesDesktop?.onCommand) return
+    window.hermesDesktop.onCommand(async (cmd) => {
+      if (cmd === 'thread:new') {
+        setActiveThreadId(null)
+        setActivePage('chat')
+      } else if (cmd === 'navigate:settings') {
+        setActivePage('settings')
+      } else if (cmd === 'folder:open') {
+        if (window.hermesDesktop?.openFolder) {
+          const folder = await window.hermesDesktop.openFolder()
+          if (folder) storage.set('projectFolder', folder)
+        }
+      }
+    })
+  }, [])
+
   useEffect(() => {
     let mounted = true
     const checkHealth = async () => {
@@ -112,6 +132,7 @@ export default function MainLayout() {
             connectionStatus={connectionStatus}
             setConnectionStatus={setConnectionStatus}
             settings={{ ...effectiveSettings, onSettingsChange: handleSaveSettings }}
+            onNavigate={setActivePage}
           />
         )}
         {activePage === 'threads' && (

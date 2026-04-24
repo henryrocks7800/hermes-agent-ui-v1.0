@@ -284,7 +284,7 @@ export default function Composer({ onSendMessage, disabled, model, onModelChange
                         'w-full text-left px-3 py-2 rounded-sm text-sm flex items-start gap-2 transition-colors',
                         index === selectedIndex ? 'bg-primary text-primary-foreground' : 'hover:bg-accent'
                       )}
-                      onClick={() => selectSuggestion(cmd)}
+                      onMouseDown={(e) => { e.preventDefault(); selectSuggestion(cmd) }}
                     >
                       <div className="flex-1">
                         <div className="font-semibold">
@@ -322,7 +322,7 @@ export default function Composer({ onSendMessage, disabled, model, onModelChange
                         'w-full text-left px-3 py-2 rounded-sm text-sm transition-colors flex flex-col',
                         index === selectedIndex ? 'bg-primary text-primary-foreground' : 'hover:bg-accent'
                       )}
-                      onClick={() => selectSuggestion(ref)}
+                      onMouseDown={(e) => { e.preventDefault(); selectSuggestion(ref) }}
                     >
                       <div className="font-semibold">{ref.value}</div>
                       <div className={cn("text-[11px]", index === selectedIndex ? "text-primary-foreground/80" : "text-muted-foreground")}>{ref.description}</div>

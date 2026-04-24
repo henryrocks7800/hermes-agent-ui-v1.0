@@ -28,8 +28,12 @@ describe('commands registry', () => {
     ])
   })
 
-  it('contains local runner model presets', () => {
-    expect(PROVIDER_MODELS.ollama).toContain('qwen3-coder')
-    expect(PROVIDER_MODELS.custom).toContain('qwen3-coder-next')
+  it('contains a local runner model preset list', () => {
+    // Provider was renamed ollama/custom → local when the Local provider
+    // unified Ollama/LM Studio/custom endpoints. Assert the new key exists
+    // and the array is non-empty rather than hard-coding specific models,
+    // because the model list is allowed to shift with upstream releases.
+    expect(Array.isArray(PROVIDER_MODELS.local)).toBe(true)
+    expect(PROVIDER_MODELS.local.length).toBeGreaterThan(0)
   })
 })
